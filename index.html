@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copilot Coding Agent PR Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0969da',
+                        secondary: '#1f2937',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="bot" class="w-8 h-8 text-primary"></i>
+                        <h1 class="text-2xl font-bold">Copilot Coding Agent PR Dashboard</h1>
+                    </div>
+                    <button id="themeToggle" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        <i data-lucide="moon" class="w-6 h-6"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Input Form -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+                <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <i data-lucide="search" class="w-5 h-5"></i>
+                    リポジトリ情報
+                </h2>
+                <form id="searchForm" class="space-y-4">
+                    <div>
+                        <label for="repoInput" class="block text-sm font-medium mb-2">
+                            リポジトリ (owner/repo)
+                        </label>
+                        <input 
+                            type="text" 
+                            id="repoInput" 
+                            placeholder="例: microsoft/vscode"
+                            class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700"
+                            required
+                        >
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="fromDate" class="block text-sm font-medium mb-2">
+                                開始日
+                            </label>
+                            <input 
+                                type="date" 
+                                id="fromDate"
+                                class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700"
+                                required
+                            >
+                        </div>
+                        <div>
+                            <label for="toDate" class="block text-sm font-medium mb-2">
+                                終了日
+                            </label>
+                            <input 
+                                type="date" 
+                                id="toDate"
+                                class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700"
+                                required
+                            >
+                        </div>
+                    </div>
+                    <div>
+                        <label for="tokenInput" class="block text-sm font-medium mb-2">
+                            GitHub Personal Access Token (オプション)
+                        </label>
+                        <input 
+                            type="password" 
+                            id="tokenInput" 
+                            placeholder="ghp_..."
+                            class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700"
+                        >
+                        <p class="text-xs text-gray-500 mt-1">
+                            API制限を回避するために推奨。プライベートリポジトリには必須。
+                        </p>
+                    </div>
+                    <button 
+                        type="submit" 
+                        id="searchButton"
+                        class="w-full bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                        <i data-lucide="search" class="w-5 h-5"></i>
+                        分析開始
+                    </button>
+                </form>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading" class="hidden">
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 text-center">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                    <p class="text-lg">データを取得中...</p>
+                </div>
+            </div>
+
+            <!-- Error State -->
+            <div id="error" class="hidden">
+                <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6">
+                    <div class="flex items-start gap-3">
+                        <i data-lucide="alert-circle" class="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0"></i>
+                        <div>
+                            <h3 class="font-semibold text-red-800 dark:text-red-300 mb-1">エラーが発生しました</h3>
+                            <p id="errorMessage" class="text-red-700 dark:text-red-400"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div id="results" class="hidden space-y-8">
+                <!-- Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-medium text-gray-600 dark:text-gray-400">全PR数</h3>
+                            <i data-lucide="git-pull-request" class="w-5 h-5 text-gray-400"></i>
+                        </div>
+                        <p id="totalPRs" class="text-3xl font-bold">0</p>
+                    </div>
+                    <div class="bg-green-50 dark:bg-green-900/20 rounded-xl shadow-lg p-6">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-medium text-green-800 dark:text-green-400">マージ済</h3>
+                            <i data-lucide="check-circle" class="w-5 h-5 text-green-600 dark:text-green-400"></i>
+                        </div>
+                        <p id="mergedPRs" class="text-3xl font-bold text-green-600 dark:text-green-400">0</p>
+                    </div>
+                    <div class="bg-red-50 dark:bg-red-900/20 rounded-xl shadow-lg p-6">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-medium text-red-800 dark:text-red-400">クローズ済</h3>
+                            <i data-lucide="x-circle" class="w-5 h-5 text-red-600 dark:text-red-400"></i>
+                        </div>
+                        <p id="closedPRs" class="text-3xl font-bold text-red-600 dark:text-red-400">0</p>
+                    </div>
+                    <div class="bg-blue-50 dark:bg-blue-900/20 rounded-xl shadow-lg p-6">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-medium text-blue-800 dark:text-blue-400">オープン</h3>
+                            <i data-lucide="git-pull-request" class="w-5 h-5 text-blue-600 dark:text-blue-400"></i>
+                        </div>
+                        <p id="openPRs" class="text-3xl font-bold text-blue-600 dark:text-blue-400">0</p>
+                    </div>
+                </div>
+
+                <!-- Merge Rate Card -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                    <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                        <i data-lucide="percent" class="w-5 h-5"></i>
+                        マージ率
+                    </h2>
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1">
+                            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-8">
+                                <div id="mergeRateBar" class="bg-green-500 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm transition-all duration-500" style="width: 0%">
+                                    <span id="mergeRateText">0%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-3xl font-bold text-green-600 dark:text-green-400" id="mergeRateValue">0%</p>
+                            <p class="text-xs text-gray-500">マージ率</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                    <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                        <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                        日別PR推移
+                    </h2>
+                    <canvas id="prChart" class="max-h-80"></canvas>
+                </div>
+
+                <!-- PR List -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                    <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                        <i data-lucide="list" class="w-5 h-5"></i>
+                        PR一覧
+                    </h2>
+                    <div id="prList" class="space-y-3"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-12">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                <p class="text-center text-sm text-gray-600 dark:text-gray-400">
+                    Copilot Coding Agent PR Dashboard - GitHub APIを使用してPRを分析
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

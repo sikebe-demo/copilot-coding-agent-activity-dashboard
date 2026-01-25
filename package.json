@@ -1,0 +1,29 @@
+{
+  "name": "copilot-coding-agent-activity-dashboard",
+  "version": "1.0.0",
+  "description": "GitHub Copilot Coding Agent PR Dashboard - 静的サイトでPR分析を可視化",
+  "main": "app.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:chrome": "playwright test --project=chromium",
+    "test:firefox": "playwright test --project=firefox",
+    "test:webkit": "playwright test --project=webkit",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report"
+  },
+  "keywords": [
+    "github",
+    "copilot",
+    "dashboard",
+    "analytics",
+    "visualization"
+  ],
+  "author": "GitHub Copilot",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "http-server": "^14.1.1"
+  }
+}
