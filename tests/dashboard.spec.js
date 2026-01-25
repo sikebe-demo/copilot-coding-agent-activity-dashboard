@@ -7,18 +7,18 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
   test('should display the main page with correct title', async ({ page }) => {
     // Check page title
-    await expect(page).toHaveTitle(/Copilot Coding Agent PR Dashboard/);
+    await expect(page).toHaveTitle(/Copilot PR.*Dashboard/);
     
     // Check main heading
     const heading = page.locator('h1');
-    await expect(heading).toContainText('Copilot Coding Agent PR Dashboard');
+    await expect(heading).toContainText('Copilot PR Dashboard');
   });
 
   test('should have all required form fields', async ({ page }) => {
     // Check repository input
     const repoInput = page.locator('#repoInput');
     await expect(repoInput).toBeVisible();
-    await expect(repoInput).toHaveAttribute('placeholder', /owner\/repo/);
+    await expect(repoInput).toHaveAttribute('placeholder', /microsoft\/vscode|owner\/repo/);
     
     // Check date inputs
     const fromDate = page.locator('#fromDate');
@@ -34,7 +34,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Check submit button
     const submitButton = page.locator('#searchButton');
     await expect(submitButton).toBeVisible();
-    await expect(submitButton).toContainText('分析開始');
+    await expect(submitButton).toContainText('Start Analysis');
   });
 
   test('should set default dates (last 30 days)', async ({ page }) => {
@@ -146,7 +146,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     
     // Check error message
     const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/見つかりません|エラー/);
+    await expect(errorMessage).toContainText(/Repository not found|error/i);
   });
 
   test('should display results for valid repository', async ({ page }) => {
@@ -240,7 +240,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(prList).toContainText('Feature: Add new component');
     await expect(prList).toContainText('#123');
     await expect(prList).toContainText('github-copilot');
-    await expect(prList).toContainText('マージ済');
+    await expect(prList).toContainText('Merged');
   });
 
   test('should display chart when results are shown', async ({ page }) => {
@@ -310,7 +310,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     
     // Check empty state message
     const prList = page.locator('#prList');
-    await expect(prList).toContainText(/見つかりませんでした/);
+    await expect(prList).toContainText(/No PRs created by Copilot Coding Agent found/i);
   });
 
   test('should have accessible labels and ARIA attributes', async ({ page }) => {
