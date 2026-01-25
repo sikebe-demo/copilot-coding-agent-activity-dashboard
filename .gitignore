@@ -10,3 +10,15 @@ playwright/.cache
 dist/
 .vite/
 *.local
+
+# Backup and temporary files
+*-old.*
+*-backup.*
+*-temp.*
+*.bak
+
+# Temporary documentation files
+DEMO.md
+TEST-*.md
+NOTES.md
+TODO.md
