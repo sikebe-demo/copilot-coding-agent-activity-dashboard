@@ -67,14 +67,6 @@ API制限を回避し、プライベートリポジトリにアクセスする�
 デプロイされたサイトは以下のURLで利用可能です：
 `https://<username>.github.io/copilot-coding-agent-activity-dashboard/`
 
-## Copilot PRの検出方法
-
-以下の条件でCopilot Coding Agentが作成したPRを判定します：
-
-- **ユーザー名**: `copilot-workspace-helper`, `github-copilot`, `copilot`などを含む
-- **タイトル・本文**: "copilot", "github copilot", "ai generated"などのキーワードを含む
-- **ラベル**: "copilot"を含むラベルが付与されている
-
 ## ファイル構成
 
 ```
