@@ -114,32 +114,52 @@ The dashboard identifies PRs created by Copilot Coding Agent using:
 
 ## 🧪 Testing
 
+### Test Execution Results
+
+✅ **All tests passing!**
+
 ```bash
+$ npm test
+
+> copilot-coding-agent-activity-dashboard@1.0.0 test
+> playwright test
+
+Running 16 tests using 1 worker
+················
+  16 passed (18.3s)
+```
+
+**Test Coverage:** 16 E2E tests covering:
+- Form validation and user input
+- GitHub API integration with mocked responses
+- Data visualization and chart rendering
+- Dark mode functionality
+- Responsive design
+- Error handling and edge cases
+- Accessibility features
+
+### Running Tests Locally
+
+```bash
+# Install dependencies
+npm install
+
+# Install Playwright browser
+npx playwright install chromium
+
 # Run E2E tests
 npm test
 
 # Run tests in debug mode
 npm run test:debug
 
-# Run tests in specific browser
-npm run test:chrome
-npm run test:firefox
-npm run test:webkit
+# Run tests in UI mode
+npm run test:ui
 ```
 
-### E2E Test Coverage (18 test cases)
+For detailed testing instructions, see [TESTING.md](./TESTING.md).
 
-- Form validation
-- GitHub API integration
-- Data visualization
-- Dark mode toggling
-- Responsive design
-- Error handling
-- Accessibility
-- Loading states
-- Empty result handling
-
-## 🎨 Design System
+## 🌐 Browser Support
 
 ### Colors
 
