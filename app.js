@@ -1,6 +1,8 @@
-// Initialize Lucide icons
+// Import Chart.js from npm
+import Chart from 'chart.js/auto';
+
+// Initialize app
 document.addEventListener('DOMContentLoaded', () => {
-    lucide.createIcons();
     initializeTheme();
     initializeForm();
     setDefaultDates();
@@ -13,26 +15,30 @@ function initializeTheme() {
     
     if (savedTheme === 'dark') {
         document.documentElement.classList.add('dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
     }
     
-    themeToggle.addEventListener('click', toggleTheme);
-    updateThemeIcon();
+    themeToggle?.addEventListener('click', toggleTheme);
 }
 
 function toggleTheme() {
-    document.documentElement.classList.toggle('dark');
-    const isDark = document.documentElement.classList.contains('dark');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    updateThemeIcon();
-}
-
-function updateThemeIcon() {
-    const themeToggle = document.getElementById('themeToggle');
-    const isDark = document.documentElement.classList.contains('dark');
-    themeToggle.innerHTML = isDark 
-        ? '<i data-lucide="sun" class="w-6 h-6"></i>' 
-        : '<i data-lucide="moon" class="w-6 h-6"></i>';
-    lucide.createIcons();
+    const html = document.documentElement;
+    const isDark = html.classList.contains('dark');
+    
+    if (isDark) {
+        html.classList.remove('dark');
+        html.setAttribute('data-theme', 'light');
+        localStorage.setItem('theme', 'light');
+    } else {
+        html.classList.add('dark');
+        html.setAttribute('data-theme', 'dark');
+        localStorage.setItem('theme', 'dark');
+    }
+    
+    // Update chart if it exists
+    if (chartInstance) {
+        updateChartTheme();
+    }
 }
 
 // Set default dates (last 30 days)
@@ -41,14 +47,17 @@ function setDefaultDates() {
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - 30);
     
-    document.getElementById('toDate').valueAsDate = toDate;
-    document.getElementById('fromDate').valueAsDate = fromDate;
+    const toInput = document.getElementById('toDate');
+    const fromInput = document.getElementById('fromDate');
+    
+    if (toInput) toInput.valueAsDate = toDate;
+    if (fromInput) fromInput.valueAsDate = fromDate;
 }
 
 // Form initialization
 function initializeForm() {
     const form = document.getElementById('searchForm');
-    form.addEventListener('submit', handleFormSubmit);
+    form?.addEventListener('submit', handleFormSubmit);
 }
 
 async function handleFormSubmit(e) {
@@ -60,7 +69,7 @@ async function handleFormSubmit(e) {
     const token = document.getElementById('tokenInput').value.trim();
     
     if (!repoInput.includes('/')) {
-        showError('リポジトリは "owner/repo" の形式で入力してください');
+        showError('Please enter repository in "owner/repo" format');
         return;
     }
     
@@ -101,11 +110,11 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
         
         if (!response.ok) {
             if (response.status === 404) {
-                throw new Error('リポジトリが見つかりません');
+                throw new Error('Repository not found');
             } else if (response.status === 403) {
-                throw new Error('API制限に達しました。トークンを使用してください');
+                throw new Error('API rate limit reached. Please use a token');
             } else {
-                throw new Error(`GitHub API エラー: ${response.status}`);
+                throw new Error(`GitHub API Error: ${response.status}`);
             }
         }
         
@@ -181,16 +190,19 @@ function displayResults(prs, owner, repo) {
         ? Math.round((merged.length / prs.length) * 100) 
         : 0;
     
-    // Update summary cards
-    document.getElementById('totalPRs').textContent = prs.length;
-    document.getElementById('mergedPRs').textContent = merged.length;
-    document.getElementById('closedPRs').textContent = closed.length;
-    document.getElementById('openPRs').textContent = open.length;
+    // Update summary cards with animation
+    animateValue('totalPRs', 0, prs.length, 1000);
+    animateValue('mergedPRs', 0, merged.length, 1000);
+    animateValue('closedPRs', 0, closed.length, 1000);
+    animateValue('openPRs', 0, open.length, 1000);
     
-    // Update merge rate
+    // Update merge rate with animation
     document.getElementById('mergeRateValue').textContent = `${mergeRate}%`;
     document.getElementById('mergeRateText').textContent = `${mergeRate}%`;
-    document.getElementById('mergeRateBar').style.width = `${mergeRate}%`;
+    
+    setTimeout(() => {
+        document.getElementById('mergeRateBar').style.width = `${mergeRate}%`;
+    }, 100);
     
     // Display chart
     displayChart(prs);
@@ -199,6 +211,26 @@ function displayResults(prs, owner, repo) {
     displayPRList(prs);
     
     showResults();
+}
+
+// Animate number counting
+function animateValue(id, start, end, duration) {
+    const element = document.getElementById(id);
+    if (!element) return;
+    
+    const range = end - start;
+    const increment = range / (duration / 16);
+    let current = start;
+    
+    const timer = setInterval(() => {
+        current += increment;
+        if (current >= end) {
+            element.textContent = Math.round(end);
+            clearInterval(timer);
+        } else {
+            element.textContent = Math.round(current);
+        }
+    }, 16);
 }
 
 let chartInstance = null;
@@ -228,7 +260,15 @@ function displayChart(prs) {
     const closedData = dates.map(date => prsByDate[date].closed);
     const openData = dates.map(date => prsByDate[date].open);
     
-    const ctx = document.getElementById('prChart');
+    const chartContainer = document.getElementById('prChart');
+    if (!chartContainer) return;
+    
+    // Create canvas if it doesn't exist
+    let canvas = chartContainer.querySelector('canvas');
+    if (!canvas) {
+        canvas = document.createElement('canvas');
+        chartContainer.appendChild(canvas);
+    }
     
     // Destroy previous chart if exists
     if (chartInstance) {
@@ -236,34 +276,37 @@ function displayChart(prs) {
     }
     
     const isDark = document.documentElement.classList.contains('dark');
-    const textColor = isDark ? '#e5e7eb' : '#1f2937';
-    const gridColor = isDark ? '#374151' : '#e5e7eb';
+    const textColor = isDark ? '#e2e8f0' : '#1e293b';
+    const gridColor = isDark ? '#334155' : '#e2e8f0';
     
-    chartInstance = new Chart(ctx, {
+    chartInstance = new Chart(canvas, {
         type: 'bar',
         data: {
-            labels: dates,
+            labels: dates.map(date => new Date(date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })),
             datasets: [
                 {
-                    label: 'マージ済',
+                    label: 'Merged',
                     data: mergedData,
-                    backgroundColor: 'rgba(34, 197, 94, 0.8)',
-                    borderColor: 'rgba(34, 197, 94, 1)',
-                    borderWidth: 1
+                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                    borderColor: 'rgba(16, 185, 129, 1)',
+                    borderWidth: 2,
+                    borderRadius: 8
                 },
                 {
-                    label: 'クローズ済',
+                    label: 'Closed',
                     data: closedData,
                     backgroundColor: 'rgba(239, 68, 68, 0.8)',
                     borderColor: 'rgba(239, 68, 68, 1)',
-                    borderWidth: 1
+                    borderWidth: 2,
+                    borderRadius: 8
                 },
                 {
-                    label: 'オープン',
+                    label: 'Open',
                     data: openData,
                     backgroundColor: 'rgba(59, 130, 246, 0.8)',
                     borderColor: 'rgba(59, 130, 246, 1)',
-                    borderWidth: 1
+                    borderWidth: 2,
+                    borderRadius: 8
                 }
             ]
         },
@@ -272,48 +315,102 @@ function displayChart(prs) {
             maintainAspectRatio: true,
             plugins: {
                 legend: {
+                    position: 'top',
                     labels: {
-                        color: textColor
+                        color: textColor,
+                        padding: 20,
+                        font: {
+                            size: 12,
+                            weight: 600
+                        },
+                        usePointStyle: true,
+                        pointStyle: 'circle'
                     }
+                },
+                tooltip: {
+                    backgroundColor: isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+                    titleColor: textColor,
+                    bodyColor: textColor,
+                    borderColor: isDark ? '#334155' : '#e2e8f0',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8
                 }
             },
             scales: {
                 x: {
                     stacked: true,
                     ticks: {
-                        color: textColor
+                        color: textColor,
+                        font: {
+                            size: 11
+                        }
                     },
                     grid: {
-                        color: gridColor
+                        color: gridColor,
+                        drawBorder: false
                     }
                 },
                 y: {
                     stacked: true,
                     ticks: {
                         color: textColor,
-                        precision: 0
+                        precision: 0,
+                        font: {
+                            size: 11
+                        }
                     },
                     grid: {
-                        color: gridColor
+                        color: gridColor,
+                        drawBorder: false
                     }
                 }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
             }
         }
     });
 }
 
+function updateChartTheme() {
+    if (!chartInstance) return;
+    
+    const isDark = document.documentElement.classList.contains('dark');
+    const textColor = isDark ? '#e2e8f0' : '#1e293b';
+    const gridColor = isDark ? '#334155' : '#e2e8f0';
+    
+    chartInstance.options.plugins.legend.labels.color = textColor;
+    chartInstance.options.plugins.tooltip.backgroundColor = isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)';
+    chartInstance.options.plugins.tooltip.titleColor = textColor;
+    chartInstance.options.plugins.tooltip.bodyColor = textColor;
+    chartInstance.options.plugins.tooltip.borderColor = isDark ? '#334155' : '#e2e8f0';
+    chartInstance.options.scales.x.ticks.color = textColor;
+    chartInstance.options.scales.x.grid.color = gridColor;
+    chartInstance.options.scales.y.ticks.color = textColor;
+    chartInstance.options.scales.y.grid.color = gridColor;
+    
+    chartInstance.update();
+}
+
 function displayPRList(prs) {
     const prList = document.getElementById('prList');
+    if (!prList) return;
+    
     prList.innerHTML = '';
     
     if (prs.length === 0) {
         prList.innerHTML = `
-            <div class="text-center py-8 text-gray-500">
-                <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 opacity-50"></i>
-                <p>Copilot Coding Agentが作成したPRは見つかりませんでした</p>
+            <div class="text-center py-16">
+                <svg class="w-16 h-16 mx-auto mb-4 text-slate-300 dark:text-slate-700" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <p class="text-slate-500 dark:text-slate-400">No PRs created by Copilot Coding Agent found</p>
             </div>
         `;
-        lucide.createIcons();
         return;
     }
     
@@ -322,64 +419,73 @@ function displayPRList(prs) {
         new Date(b.created_at) - new Date(a.created_at)
     );
     
-    sortedPRs.forEach(pr => {
+    sortedPRs.forEach((pr, index) => {
         const createdDate = new Date(pr.created_at).toLocaleDateString('ja-JP');
         const status = pr.merged_at ? 'merged' : pr.state;
         const statusConfig = {
             merged: {
-                class: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300',
-                icon: 'check-circle',
-                text: 'マージ済'
+                class: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
+                icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+                text: 'Merged'
             },
             closed: {
-                class: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
-                icon: 'x-circle',
-                text: 'クローズ済'
+                class: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
+                icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+                text: 'Closed'
             },
             open: {
-                class: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300',
-                icon: 'git-pull-request',
-                text: 'オープン'
+                class: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
+                icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg>`,
+                text: 'Open'
             }
         };
         
         const config = statusConfig[status];
         
         const prElement = document.createElement('div');
-        prElement.className = 'border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow';
+        prElement.className = 'pr-item p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 animate-slide-in';
+        prElement.style.animationDelay = `${index * 0.05}s`;
         prElement.innerHTML = `
-            <div class="flex items-start justify-between gap-4">
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="px-3 py-1 rounded-full text-xs font-medium ${config.class} flex items-center gap-1">
-                            <i data-lucide="${config.icon}" class="w-3 h-3"></i>
-                            ${config.text}
-                        </span>
-                        <span class="text-sm text-gray-500">#${pr.number}</span>
-                    </div>
-                    <a href="${pr.html_url}" target="_blank" class="text-lg font-medium hover:text-primary transition-colors block mb-1 truncate">
-                        ${escapeHtml(pr.title)}
-                    </a>
-                    <div class="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-                        <span class="flex items-center gap-1">
-                            <i data-lucide="user" class="w-4 h-4"></i>
-                            ${escapeHtml(pr.user.login)}
-                        </span>
-                        <span class="flex items-center gap-1">
-                            <i data-lucide="calendar" class="w-4 h-4"></i>
-                            ${createdDate}
-                        </span>
-                    </div>
+            <div class="flex items-start justify-between gap-4 mb-3">
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${config.class}">
+                        ${config.icon}
+                        ${config.text}
+                    </span>
+                    <span class="text-xs text-slate-500 dark:text-slate-400">#${pr.number}</span>
                 </div>
-                <a href="${pr.html_url}" target="_blank" class="flex-shrink-0 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                    <i data-lucide="external-link" class="w-5 h-5"></i>
+                <a href="${pr.html_url}" target="_blank" rel="noopener" 
+                   class="flex-shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                   title="GitHubで開く">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
                 </a>
+            </div>
+            <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8">${escapeHtml(pr.title)}</h3>
+            <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                <span class="flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    ${escapeHtml(pr.user.login)}
+                </span>
+                <span class="flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    ${createdDate}
+                </span>
             </div>
         `;
         prList.appendChild(prElement);
     });
-    
-    lucide.createIcons();
 }
 
 function escapeHtml(text) {
@@ -390,26 +496,41 @@ function escapeHtml(text) {
 
 // UI State Management
 function showLoading() {
-    document.getElementById('loading').classList.remove('hidden');
+    const loading = document.getElementById('loading');
+    if (loading) {
+        loading.classList.remove('hidden');
+        loading.classList.add('animate-fade-in');
+    }
 }
 
 function hideLoading() {
-    document.getElementById('loading').classList.add('hidden');
+    const loading = document.getElementById('loading');
+    if (loading) loading.classList.add('hidden');
 }
 
 function showError(message) {
-    document.getElementById('errorMessage').textContent = message;
-    document.getElementById('error').classList.remove('hidden');
+    const errorEl = document.getElementById('error');
+    const errorMessage = document.getElementById('errorMessage');
+    if (errorEl && errorMessage) {
+        errorMessage.textContent = message;
+        errorEl.classList.remove('hidden');
+        errorEl.classList.add('animate-fade-in');
+    }
 }
 
 function hideError() {
-    document.getElementById('error').classList.add('hidden');
+    const errorEl = document.getElementById('error');
+    if (errorEl) errorEl.classList.add('hidden');
 }
 
 function showResults() {
-    document.getElementById('results').classList.remove('hidden');
+    const results = document.getElementById('results');
+    if (results) {
+        results.classList.remove('hidden');
+    }
 }
 
 function hideResults() {
-    document.getElementById('results').classList.add('hidden');
+    const results = document.getElementById('results');
+    if (results) results.classList.add('hidden');
 }
