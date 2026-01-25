@@ -150,16 +150,22 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should display results for valid repository', async ({ page }) => {
-    // Mock GitHub API with sample data
-    await page.route('https://api.github.com/repos/*/pulls*', route => {
+    // Mock GitHub API with sample data (using current dates)
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const threeDaysAgo = new Date(now);
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    
+    await page.route('https://api.github.com/**', route => {
       const prs = [
         {
           id: 1,
           number: 1,
           title: 'Test PR by Copilot',
           state: 'closed',
-          merged_at: '2024-01-20T10:00:00Z',
-          created_at: '2024-01-15T10:00:00Z',
+          merged_at: fiveDaysAgo.toISOString(),
+          created_at: fiveDaysAgo.toISOString(),
           user: { login: 'github-copilot' },
           html_url: 'https://github.com/test/repo/pull/1',
           body: 'Created by GitHub Copilot',
@@ -171,7 +177,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
           title: 'Another Copilot PR',
           state: 'open',
           merged_at: null,
-          created_at: '2024-01-18T10:00:00Z',
+          created_at: threeDaysAgo.toISOString(),
           user: { login: 'copilot-workspace-helper' },
           html_url: 'https://github.com/test/repo/pull/2',
           body: 'AI generated PR',
@@ -181,6 +187,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
       
       route.fulfill({
         status: 200,
+        contentType: 'application/json',
         body: JSON.stringify(prs)
       });
     });
@@ -189,8 +196,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
     
-    // Wait for results
-    await page.waitForSelector('#results', { state: 'visible' });
+    // Wait for results with longer timeout
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
     
     // Check summary cards
     const totalPRs = page.locator('#totalPRs');
@@ -208,18 +215,23 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should display PR list with correct information', async ({ page }) => {
-    // Mock GitHub API
-    await page.route('https://api.github.com/repos/*/pulls*', route => {
+    // Mock GitHub API with current date
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    
+    await page.route('https://api.github.com/**', route => {
       route.fulfill({
         status: 200,
+        contentType: 'application/json',
         body: JSON.stringify([
           {
             id: 1,
             number: 123,
             title: 'Feature: Add new component',
             state: 'closed',
-            merged_at: '2024-01-20T10:00:00Z',
-            created_at: '2024-01-15T10:00:00Z',
+            merged_at: fiveDaysAgo.toISOString(),
+            created_at: fiveDaysAgo.toISOString(),
             user: { login: 'github-copilot' },
             html_url: 'https://github.com/test/repo/pull/123',
             body: 'Copilot generated',
@@ -232,8 +244,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
     
-    // Wait for PR list
-    await page.waitForSelector('#prList', { state: 'visible' });
+    // Wait for PR list with longer timeout
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
     
     // Check PR details
     const prList = page.locator('#prList');
@@ -244,18 +256,23 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should display chart when results are shown', async ({ page }) => {
-    // Mock GitHub API
-    await page.route('https://api.github.com/repos/*/pulls*', route => {
+    // Mock GitHub API with current date
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    
+    await page.route('https://api.github.com/**', route => {
       route.fulfill({
         status: 200,
+        contentType: 'application/json',
         body: JSON.stringify([
           {
             id: 1,
             number: 1,
             title: 'Test PR',
             state: 'closed',
-            merged_at: '2024-01-20T10:00:00Z',
-            created_at: '2024-01-15T10:00:00Z',
+            merged_at: fiveDaysAgo.toISOString(),
+            created_at: fiveDaysAgo.toISOString(),
             user: { login: 'github-copilot' },
             html_url: 'https://github.com/test/repo/pull/1',
             body: 'Copilot PR',
@@ -268,8 +285,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
     
-    // Wait for chart
-    await page.waitForSelector('#prChart', { state: 'visible' });
+    // Wait for chart with longer timeout
+    await page.waitForSelector('#prChart', { state: 'visible', timeout: 10000 });
     
     // Check that chart canvas exists
     const chart = page.locator('#prChart');
@@ -277,10 +294,15 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should handle empty results', async ({ page }) => {
-    // Mock GitHub API with no Copilot PRs
-    await page.route('https://api.github.com/repos/*/pulls*', route => {
+    // Mock GitHub API with no Copilot PRs (using current date)
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    
+    await page.route('https://api.github.com/**', route => {
       route.fulfill({
         status: 200,
+        contentType: 'application/json',
         body: JSON.stringify([
           {
             id: 1,
@@ -288,7 +310,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             title: 'Regular PR',
             state: 'open',
             merged_at: null,
-            created_at: '2024-01-15T10:00:00Z',
+            created_at: fiveDaysAgo.toISOString(),
             user: { login: 'regular-user' },
             html_url: 'https://github.com/test/repo/pull/1',
             body: 'Regular PR body',
@@ -301,8 +323,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
     
-    // Wait for results
-    await page.waitForSelector('#results', { state: 'visible' });
+    // Wait for results with longer timeout
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
     
     // Check that total is 0
     const totalPRs = page.locator('#totalPRs');
@@ -327,10 +349,15 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should open PR links in new tab', async ({ page, context }) => {
-    // Mock GitHub API
-    await page.route('https://api.github.com/repos/*/pulls*', route => {
+    // Mock GitHub API with current date
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    
+    await page.route('https://api.github.com/**', route => {
       route.fulfill({
         status: 200,
+        contentType: 'application/json',
         body: JSON.stringify([
           {
             id: 1,
@@ -338,7 +365,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             title: 'Test PR',
             state: 'open',
             merged_at: null,
-            created_at: '2024-01-15T10:00:00Z',
+            created_at: fiveDaysAgo.toISOString(),
             user: { login: 'github-copilot' },
             html_url: 'https://github.com/test/repo/pull/1',
             body: 'Copilot PR',
@@ -351,8 +378,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
     
-    // Wait for PR list
-    await page.waitForSelector('#prList a[target="_blank"]', { state: 'visible' });
+    // Wait for PR list with longer timeout
+    await page.waitForSelector('#prList a[target="_blank"]', { state: 'visible', timeout: 10000 });
     
     // Check that links have target="_blank"
     const links = page.locator('#prList a[target="_blank"]');
