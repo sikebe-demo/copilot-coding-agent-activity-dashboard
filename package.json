@@ -1,0 +1,41 @@
+{
+  "name": "copilot-coding-agent-activity-dashboard",
+  "version": "1.0.0",
+  "description": "GitHub Copilot Coding Agent PR Dashboard - npmパッケージ管理でモダンな静的サイト",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:chrome": "playwright test --project=chromium",
+    "test:firefox": "playwright test --project=firefox",
+    "test:webkit": "playwright test --project=webkit",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report"
+  },
+  "keywords": [
+    "github",
+    "copilot",
+    "dashboard",
+    "analytics",
+    "visualization",
+    "vite"
+  ],
+  "author": "GitHub Copilot",
+  "license": "MIT",
+  "dependencies": {
+    "chart.js": "^4.4.1",
+    "lucide": "^0.303.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "autoprefixer": "^10.4.16",
+    "http-server": "^14.1.1",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "vite": "^5.0.8"
+  }
+}

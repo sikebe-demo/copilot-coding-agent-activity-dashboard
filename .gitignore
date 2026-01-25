@@ -1,0 +1,24 @@
+node_modules/
+test-results/
+playwright-report/
+playwright/.cache
+.DS_Store
+*.log
+.env
+.vscode/
+.idea/
+dist/
+.vite/
+*.local
+
+# Backup and temporary files
+*-old.*
+*-backup.*
+*-temp.*
+*.bak
+
+# Temporary documentation files
+DEMO.md
+TEST-*.md
+NOTES.md
+TODO.md
