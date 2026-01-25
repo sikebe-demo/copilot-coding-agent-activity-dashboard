@@ -1,128 +1,227 @@
-# Copilot Coding Agent PR Dashboard
+# 🤖 Copilot Coding Agent PR Dashboard
 
-GitHub Copilot Coding Agentが作成したPull Requestを分析・可視化する静的Webアプリケーションです。
+A modern, self-contained web application for analyzing and visualizing Pull Requests created by GitHub Copilot Coding Agent.
 
 🚀 **[Live Demo](https://sikebe-demo.github.io/copilot-coding-agent-activity-dashboard/)**
 
-## 機能
+![Dashboard Preview](https://github.com/user-attachments/assets/dac3c00d-853a-4616-98c2-b40b5386d320)
 
-- 📊 **統計サマリー**: マージ済・クローズ済・オープンPRの件数を表示
-- 📈 **マージ率**: PR全体のマージ成功率を可視化
-- 📅 **日別推移**: 日ごとのPR作成数をグラフで表示
-- 📋 **PR一覧**: 全PRの詳細リストを表示
-- 🌓 **ダークモード**: ライト/ダークテーマの切り替え対応
-- 📱 **レスポンシブ**: モバイル・タブレット・デスクトップに対応
+## ✨ Features
 
-## 技術スタック
+- 📊 **Statistics Summary**: Display counts of merged, closed, and open PRs
+- 📈 **Merge Success Rate**: Visual progress bar showing merge success rate  
+- 📅 **Daily Trend Chart**: Interactive Chart.js visualization of daily PR activity
+- 📋 **PR List**: Detailed list of all PRs with status badges
+- 🌓 **Dark Mode**: Seamless light/dark theme switching with localStorage persistence
+- 📱 **Responsive Design**: Fully responsive for mobile, tablet, and desktop
+- ✨ **Modern UI**: Glassmorphism design with gradient backgrounds and smooth animations
 
-- **HTML5**: セマンティックなマークアップ
-- **JavaScript (ES6+)**: モダンなJavaScript機能を使用
-- **Tailwind CSS**: ユーティリティファーストCSSフレームワーク
-- **Lucide Icons**: 美しいアイコンセット
-- **Chart.js**: データ可視化ライブラリ
-- **GitHub API**: リポジトリデータの取得
+## 🛠️ Technology Stack
 
-## 使い方
+| Technology | Purpose | Version |
+|------------|---------|---------|
+| **Vite** | Modern build tool and dev server | 5.0.8 |
+| **Tailwind CSS** | Utility-first CSS framework (npm) | 3.4.0 |
+| **Chart.js** | Data visualization library (npm) | 4.4.1 |
+| **JavaScript (ES6+)** | GitHub API integration | - |
+| **GitHub REST API** | PR data fetching | v3 |
+| **Playwright** | E2E testing | 1.40.0 |
 
-### GitHub Pagesでホストされたバージョンを使用
+## 🚀 Quick Start
 
-[https://sikebe-demo.github.io/copilot-coding-agent-activity-dashboard/](https://sikebe-demo.github.io/copilot-coding-agent-activity-dashboard/) にアクセスして、すぐに使用できます。
+### Prerequisites
 
-### ローカルで実行
+- Node.js 18+ 
+- npm or yarn
 
-1. ブラウザで `index.html` を開く
-2. リポジトリ情報を入力（例: `microsoft/vscode`）
-3. 分析期間を選択（開始日・終了日）
-4. オプション: GitHub Personal Access Tokenを入力（API制限回避のため推奨）
-5. 「分析開始」ボタンをクリック
+### Installation
 
-### GitHub Personal Access Token（推奨）
+```bash
+# Clone the repository
+git clone https://github.com/sikebe-demo/copilot-coding-agent-activity-dashboard.git
+cd copilot-coding-agent-activity-dashboard
 
-API制限を回避し、プライベートリポジトリにアクセスするために、Personal Access Tokenの使用を推奨します。
+# Install dependencies
+npm install
+```
 
-1. [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens)にアクセス
-2. "Generate new token" をクリック
-3. `repo` スコープを選択
-4. トークンを生成してコピー
-5. アプリケーションの「GitHub Personal Access Token」フィールドに貼り付け
+### Development
 
-## Copilot PRの検出方法
+```bash
+# Start development server with hot reload
+npm run dev
 
-以下の条件でCopilot Coding Agentが作成したPRを判定します：
+# Open http://localhost:8080
+```
 
-- **ユーザー名**: `copilot-workspace-helper`, `github-copilot`, `copilot`などを含む
-- **タイトル・本文**: "copilot", "github copilot", "ai generated"などのキーワードを含む
-- **ラベル**: "copilot"を含むラベルが付与されている
+### Production Build
 
-## デプロイ
+```bash
+# Build for production
+npm run build
 
-### GitHub Pagesへの自動デプロイ
+# Preview production build
+npm run preview
+```
 
-このリポジトリは、`main`ブランチへのプッシュ時に自動的にGitHub Pagesにデプロイされます。
+## 📖 Usage
 
-1. リポジトリの Settings > Pages に移動
-2. Source を "GitHub Actions" に設定
-3. `main`ブランチにプッシュすると、自動的にデプロイされます
+### Using the Hosted Version
 
-デプロイされたサイトは以下のURLで利用可能です：
-`https://<username>.github.io/copilot-coding-agent-activity-dashboard/`
+Visit [https://sikebe-demo.github.io/copilot-coding-agent-activity-dashboard/](https://sikebe-demo.github.io/copilot-coding-agent-activity-dashboard/)
 
-## ファイル構成
+### Basic Usage
+
+1. Enter repository information (e.g., `microsoft/vscode`)
+2. Select analysis period (start date and end date)
+3. Optional: Enter GitHub Personal Access Token (recommended to avoid rate limits)
+4. Click "Start Analysis"
+
+### GitHub Personal Access Token (Recommended)
+
+To avoid API rate limits and access private repositories:
+
+1. Go to [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens)
+2. Click "Generate new token"
+3. Select `repo` scope
+4. Generate and copy the token
+5. Paste it in the "GitHub Token" field
+
+## 🔍 Copilot PR Detection
+
+The dashboard identifies PRs created by Copilot Coding Agent using:
+
+- **Username patterns**: `copilot-workspace-helper`, `github-copilot`, `copilot`
+- **Keywords**: "copilot", "github copilot", "ai generated", "workspace ai", "copilot workspace"
+- **Labels**: PRs with "copilot" label
+
+## 📁 Project Structure
 
 ```
 .
-├── index.html      # メインHTMLファイル
-├── app.js          # アプリケーションロジック
-├── style.css       # カスタムスタイル
-├── README.md       # プロジェクトドキュメント
-├── package.json    # 依存関係とスクリプト
-└── tests/          # E2Eテスト
-    └── dashboard.spec.js
+├── index.html              # Main HTML file with modern UI
+├── app.js                  # Application logic with Chart.js
+├── style.css               # Tailwind CSS + custom styles
+├── vite.config.js          # Vite configuration
+├── tailwind.config.js      # Tailwind theme customization
+├── postcss.config.js       # PostCSS with Tailwind
+├── package.json            # npm dependencies
+├── .gitignore             # Git ignore rules
+├── tests/
+│   └── dashboard.spec.js   # E2E tests (18 test cases)
+└── README.md              # This file
 ```
 
-## 開発
-
-### 前提条件
-
-- Node.js 18以上
-- npm または yarn
-
-### セットアップ
+## 🧪 Testing
 
 ```bash
-# 依存関係のインストール
-npm install
-
-# E2Eテストの実行
+# Run E2E tests
 npm test
 
-# テストのデバッグモード
+# Run tests in debug mode
 npm run test:debug
 
-# 特定のブラウザでテスト
+# Run tests in specific browser
 npm run test:chrome
 npm run test:firefox
 npm run test:webkit
 ```
 
-### E2Eテスト
+### E2E Test Coverage (18 test cases)
 
-Playwrightを使用したE2Eテストが含まれています：
+- Form validation
+- GitHub API integration
+- Data visualization
+- Dark mode toggling
+- Responsive design
+- Error handling
+- Accessibility
+- Loading states
+- Empty result handling
 
-- フォーム入力のバリデーション
-- GitHub APIとの連携
-- データの可視化
-- ダークモード切り替え
-- レスポンシブデザイン
+## 🎨 Design System
 
-## ライセンス
+### Colors
+
+- **Primary**: Indigo (600, 700)
+- **Success**: Green (500, 600)
+- **Error**: Red (500, 600)
+- **Info**: Blue (500, 600)
+
+### Effects
+
+- Glassmorphism cards with backdrop blur
+- Gradient backgrounds (indigo → purple → pink)
+- Smooth transitions and animations
+- Hover scale effects
+- Shimmer progress bar
+
+## 📦 NPM Scripts
+
+```bash
+npm run dev          # Start Vite dev server
+npm run build        # Build for production
+npm run preview      # Preview production build
+npm test             # Run Playwright E2E tests
+npm run test:debug   # Run tests in debug mode
+npm run test:ui      # Run tests in UI mode
+```
+
+## 🚀 Deployment
+
+### GitHub Pages
+
+This repository is configured for automatic deployment to GitHub Pages:
+
+1. Go to repository Settings > Pages
+2. Set Source to "GitHub Actions"
+3. Push to `main` branch to trigger deployment
+4. Site will be available at: `https://<username>.github.io/copilot-coding-agent-activity-dashboard/`
+
+### Manual Deployment
+
+```bash
+# Build the project
+npm run build
+
+# Deploy the dist/ folder to your hosting service
+```
+
+## 🌐 Browser Support
+
+- ✅ Chrome/Edge (latest)
+- ✅ Firefox (latest)
+- ✅ Safari (latest)
+- ✅ Mobile browsers (iOS Safari, Chrome Mobile)
+
+## 🔒 Security
+
+- ✅ CodeQL static analysis: No vulnerabilities
+- ✅ GitHub Actions permissions: Minimal required permissions
+- ✅ Token management: Password input field, not persisted
+- ✅ API authentication: Bearer token authentication
+- ✅ XSS prevention: HTML escaping for user content
+
+## 🤝 Contributing
+
+Pull requests are welcome! Bug reports and feature requests are accepted through Issues.
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📝 License
 
 MIT License
 
-## 貢献
+## 👤 Author
 
-Pull Requestsを歓迎します！バグ報告や機能提案はIssuesで受け付けています。
+Created with ❤️ by GitHub Copilot Coding Agent
 
-## 作者
+---
 
-Created with ❤️ by GitHub Copilot
+**Note**: This is a client-side application that uses the GitHub REST API directly from the browser. No backend server is required.
