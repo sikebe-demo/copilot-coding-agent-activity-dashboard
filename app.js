@@ -87,7 +87,7 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
     };
     
     if (token) {
-        headers['Authorization'] = `token ${token}`;
+        headers['Authorization'] = `Bearer ${token}`;
     }
     
     const allPRs = [];
