@@ -166,9 +166,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
           state: 'closed',
           merged_at: fiveDaysAgo.toISOString(),
           created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'github-copilot' },
+          user: { login: 'Copilot' },
+          assignees: [{ login: 'Copilot' }],
           html_url: 'https://github.com/test/repo/pull/1',
-          body: 'Created by GitHub Copilot',
+          body: 'Created by Copilot Coding Agent',
           labels: []
         },
         {
@@ -178,9 +179,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
           state: 'open',
           merged_at: null,
           created_at: threeDaysAgo.toISOString(),
-          user: { login: 'copilot-workspace-helper' },
+          user: { login: 'Copilot' },
+          assignees: [{ login: 'Copilot' }],
           html_url: 'https://github.com/test/repo/pull/2',
-          body: 'AI generated PR',
+          body: 'Copilot generated PR',
           labels: []
         }
       ];
@@ -232,7 +234,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             state: 'closed',
             merged_at: fiveDaysAgo.toISOString(),
             created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'github-copilot' },
+            user: { login: 'Copilot' },
+            assignees: [{ login: 'Copilot' }],
             html_url: 'https://github.com/test/repo/pull/123',
             body: 'Copilot generated',
             labels: []
@@ -251,7 +254,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const prList = page.locator('#prList');
     await expect(prList).toContainText('Feature: Add new component');
     await expect(prList).toContainText('#123');
-    await expect(prList).toContainText('github-copilot');
+    await expect(prList).toContainText('Copilot');
     await expect(prList).toContainText('Merged');
   });
 
@@ -273,7 +276,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             state: 'closed',
             merged_at: fiveDaysAgo.toISOString(),
             created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'github-copilot' },
+            user: { login: 'Copilot' },
+            assignees: [{ login: 'Copilot' }],
             html_url: 'https://github.com/test/repo/pull/1',
             body: 'Copilot PR',
             labels: []
@@ -312,6 +316,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
             user: { login: 'regular-user' },
+            assignees: [{ login: 'regular-user' }],
             html_url: 'https://github.com/test/repo/pull/1',
             body: 'Regular PR body',
             labels: []
@@ -366,7 +371,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             state: 'open',
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'github-copilot' },
+            user: { login: 'Copilot' },
+            assignees: [{ login: 'Copilot' }],
             html_url: 'https://github.com/test/repo/pull/1',
             body: 'Copilot PR',
             labels: []
@@ -406,8 +412,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     expect(toValue).toBeTruthy();
   });
 
-  test('should detect Copilot PRs by branch name prefix', async ({ page }) => {
-    // Test the primary detection method: branch names starting with 'copilot/'
+  test('should detect Copilot PRs by assignee and author', async ({ page }) => {
+    // Test the detection method: PRs with "Copilot" as assignee or author
     const now = new Date();
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
@@ -417,28 +423,30 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         {
           id: 1,
           number: 1,
-          title: 'Add theme switcher',
+          title: 'Copilot PR with assignee',
           state: 'closed',
           merged_at: fiveDaysAgo.toISOString(),
           created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'regular-user' },
+          user: { login: 'Copilot' },
+          assignees: [{ login: 'Copilot' }, { login: 'SIkebe' }],
           html_url: 'https://github.com/test/repo/pull/1',
-          body: 'Adds dark mode support',
+          body: 'Adds feature',
           labels: [],
-          head: { ref: 'copilot/add-theme-switcher' }
+          head: { ref: 'copilot/add-feature' }
         },
         {
           id: 2,
           number: 2,
-          title: 'Regular PR',
+          title: 'Regular PR with copilot branch',
           state: 'open',
           merged_at: null,
           created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'another-user' },
+          user: { login: 'regular-user' },
+          assignees: [{ login: 'regular-user' }],
           html_url: 'https://github.com/test/repo/pull/2',
           body: 'Manual changes',
           labels: [],
-          head: { ref: 'feature/manual-changes' }
+          head: { ref: 'copilot/manual-branch' }
         }
       ];
 
@@ -455,13 +463,14 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Wait for results
     await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
 
-    // Only the PR with copilot/ branch prefix should be detected
+    // Only the PR with Copilot as assignee/author should be detected
+    // The regular user's PR with copilot/ branch should NOT be detected
     const totalPRs = page.locator('#totalPRs');
     await expect(totalPRs).toContainText('1');
 
     // Verify the correct PR is shown
     const prList = page.locator('#prList');
-    await expect(prList).toContainText('Add theme switcher');
-    await expect(prList).not.toContainText('Regular PR');
+    await expect(prList).toContainText('Copilot PR with assignee');
+    await expect(prList).not.toContainText('Regular PR with copilot branch');
   });
 });
