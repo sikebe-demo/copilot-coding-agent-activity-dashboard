@@ -151,8 +151,12 @@ async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, to
     let page = 1;
     const perPage = 100;
 
+    // URL-encode owner and repo to prevent injection attacks
+    const encodedOwner = encodeURIComponent(owner);
+    const encodedRepo = encodeURIComponent(repo);
+
     while (true) {
-        const url = `https://api.github.com/repos/${owner}/${repo}/pulls?state=all&per_page=${perPage}&page=${page}&sort=created&direction=desc`;
+        const url = `https://api.github.com/repos/${encodedOwner}/${encodedRepo}/pulls?state=all&per_page=${perPage}&page=${page}&sort=created&direction=desc`;
 
         const response = await fetch(url, { headers });
 
@@ -478,6 +482,9 @@ function displayPRList(prs: PullRequest[]): void {
 
         const config = statusConfig[status];
 
+        // Sanitize PR number to ensure it's a valid integer
+        const safeNumber = Number.isInteger(pr.number) ? pr.number : 0;
+
         const prElement = document.createElement('div');
         prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
         prElement.innerHTML = `
@@ -487,9 +494,9 @@ function displayPRList(prs: PullRequest[]): void {
                         ${config.icon}
                         ${config.text}
                     </span>
-                    <span class="text-xs text-slate-600 dark:text-slate-300">#${pr.number}</span>
+                    <span class="text-xs text-slate-600 dark:text-slate-300">#${safeNumber}</span>
                 </div>
-                <a href="${pr.html_url}" target="_blank" rel="noopener"
+                <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
                    class="flex-shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                    title="GitHubで開く">
                     <svg class="w-4 h-4 text-slate-500 dark:text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -531,6 +538,17 @@ function escapeHtml(text: string | null | undefined): string {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+// Sanitize URL to prevent javascript: protocol XSS attacks
+function sanitizeUrl(url: string | null | undefined): string {
+    if (url == null) return '#';
+    const trimmed = String(url).trim();
+    // Only allow http: and https: protocols
+    if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+        return escapeHtml(trimmed);
+    }
+    return '#';
 }
 
 // UI State Management
