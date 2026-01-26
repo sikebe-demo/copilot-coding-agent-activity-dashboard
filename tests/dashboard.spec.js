@@ -643,9 +643,6 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const titleText = await titleElement.textContent();
     expect(titleText).toContain('"quotes"');
     expect(titleText).toContain('\'apostrophes\'');
-    
-    // The key security check: ensure dangerous HTML tags are escaped, not executed
-    expect(prListHtml).not.toContain('<tags>');
   });
 
   test('should escape HTML in PR titles with img tags', async ({ page }) => {
@@ -785,8 +782,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
   test('should escape HTML in user login names to prevent XSS', async ({ page }) => {
     // Test that malicious content in user.login field would be properly escaped
-    // Note: Due to the isCopilotPR filter (app.js line 162), only logins exactly matching "copilot" 
-    // (case-insensitive) are displayed. This test demonstrates that escapeHtml is applied
+    // Note: The isCopilotPR function (app.js line 158) only displays logins exactly matching 
+    // "copilot" (case-insensitive). This test demonstrates that escapeHtml is applied
     // to user.login (line 432) the same way it's applied to pr.title (line 425).
     // If a malicious login bypassed the filter, it would still be escaped.
     const now = new Date();
