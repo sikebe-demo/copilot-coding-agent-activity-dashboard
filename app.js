@@ -190,19 +190,16 @@ function displayResults(prs, owner, repo) {
         ? Math.round((merged.length / prs.length) * 100)
         : 0;
 
-    // Update summary cards with animation
-    animateValue('totalPRs', 0, prs.length, 1000);
-    animateValue('mergedPRs', 0, merged.length, 1000);
-    animateValue('closedPRs', 0, closed.length, 1000);
-    animateValue('openPRs', 0, open.length, 1000);
+    // Update summary cards
+    document.getElementById('totalPRs').textContent = prs.length;
+    document.getElementById('mergedPRs').textContent = merged.length;
+    document.getElementById('closedPRs').textContent = closed.length;
+    document.getElementById('openPRs').textContent = open.length;
 
-    // Update merge rate with animation
+    // Update merge rate
     document.getElementById('mergeRateValue').textContent = `${mergeRate}%`;
     document.getElementById('mergeRateText').textContent = `${mergeRate}%`;
-
-    setTimeout(() => {
-        document.getElementById('mergeRateBar').style.width = `${mergeRate}%`;
-    }, 100);
+    document.getElementById('mergeRateBar').style.width = `${mergeRate}%`;
 
     // Display chart
     displayChart(prs);
@@ -211,26 +208,6 @@ function displayResults(prs, owner, repo) {
     displayPRList(prs);
 
     showResults();
-}
-
-// Animate number counting
-function animateValue(id, start, end, duration) {
-    const element = document.getElementById(id);
-    if (!element) return;
-
-    const range = end - start;
-    const increment = range / (duration / 16);
-    let current = start;
-
-    const timer = setInterval(() => {
-        current += increment;
-        if (current >= end) {
-            element.textContent = Math.round(end);
-            clearInterval(timer);
-        } else {
-            element.textContent = Math.round(current);
-        }
-    }, 16);
 }
 
 let chartInstance = null;
@@ -443,8 +420,7 @@ function displayPRList(prs) {
         const config = statusConfig[status];
 
         const prElement = document.createElement('div');
-        prElement.className = 'pr-item p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 animate-slide-in';
-        prElement.style.animationDelay = `${index * 0.05}s`;
+        prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
         prElement.innerHTML = `
             <div class="flex items-start justify-between gap-4 mb-3">
                 <div class="flex items-center gap-2 flex-shrink-0">
@@ -499,7 +475,6 @@ function showLoading() {
     const loading = document.getElementById('loading');
     if (loading) {
         loading.classList.remove('hidden');
-        loading.classList.add('animate-fade-in');
     }
 }
 
@@ -514,7 +489,6 @@ function showError(message) {
     if (errorEl && errorMessage) {
         errorMessage.textContent = message;
         errorEl.classList.remove('hidden');
-        errorEl.classList.add('animate-fade-in');
     }
 }
 
