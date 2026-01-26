@@ -118,6 +118,12 @@ async function handleFormSubmit(e: Event): Promise<void> {
         return;
     }
 
+    // Validate owner and repo names to prevent path traversal attacks
+    if (!isValidGitHubName(owner) || !isValidGitHubName(repo)) {
+        showError('Invalid repository name. Names can only contain letters, numbers, hyphens, underscores, and periods.');
+        return;
+    }
+
     if (new Date(fromDate) > new Date(toDate)) {
         showError('Start date must be before end date');
         return;
@@ -137,6 +143,19 @@ async function handleFormSubmit(e: Event): Promise<void> {
     }
 }
 
+// Validate GitHub owner/repo segments using a conservative allowlist to prevent path traversal or injection
+// NOTE: This is a *security* filter for safe path segments, not a complete implementation of GitHub's naming rules.
+// It rejects "." and ".." and only allows letters, numbers, hyphens, underscores, and periods.
+function isValidGitHubName(name: string): boolean {
+    // Reject empty names, "." and ".." for path traversal prevention
+    if (!name || name === '.' || name === '..') {
+        return false;
+    }
+    // Only allow alphanumeric characters, hyphens, underscores, and periods
+    const validPattern = /^[A-Za-z0-9_.-]+$/;
+    return validPattern.test(name);
+}
+
 // GitHub API Functions
 async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, toDate: string, token: string): Promise<PullRequest[]> {
     const headers: HeadersInit = {
@@ -151,8 +170,12 @@ async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, to
     let page = 1;
     const perPage = 100;
 
+    // URL-encode owner and repo to prevent injection attacks
+    const encodedOwner = encodeURIComponent(owner);
+    const encodedRepo = encodeURIComponent(repo);
+
     while (true) {
-        const url = `https://api.github.com/repos/${owner}/${repo}/pulls?state=all&per_page=${perPage}&page=${page}&sort=created&direction=desc`;
+        const url = `https://api.github.com/repos/${encodedOwner}/${encodedRepo}/pulls?state=all&per_page=${perPage}&page=${page}&sort=created&direction=desc`;
 
         const response = await fetch(url, { headers });
 
@@ -478,6 +501,10 @@ function displayPRList(prs: PullRequest[]): void {
 
         const config = statusConfig[status];
 
+        // Validate PR number - use Number.isSafeInteger since pr.number is typed as number
+        // Display empty string for invalid numbers to avoid showing misleading "#0"
+        const prNumberDisplay = Number.isSafeInteger(pr.number) && pr.number > 0 ? `#${pr.number}` : '';
+
         const prElement = document.createElement('div');
         prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
         prElement.innerHTML = `
@@ -487,9 +514,9 @@ function displayPRList(prs: PullRequest[]): void {
                         ${config.icon}
                         ${config.text}
                     </span>
-                    <span class="text-xs text-slate-600 dark:text-slate-300">#${pr.number}</span>
+                    ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-300">${prNumberDisplay}</span>` : ''}
                 </div>
-                <a href="${pr.html_url}" target="_blank" rel="noopener"
+                <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
                    class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                    title="GitHubで開く">
                     <svg class="w-4 h-4 text-slate-500 dark:text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -531,6 +558,22 @@ function escapeHtml(text: string | null | undefined): string {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+// Sanitize URL to prevent XSS attacks - only allows HTTPS URLs from github.com
+function sanitizeUrl(url: string | null | undefined): string {
+    if (url == null) return '#';
+    try {
+        const parsedUrl = new URL(String(url).trim());
+        // Only allow HTTPS GitHub URLs using URL constructor validation
+        // The URL constructor normalizes and encodes the URL, so no additional escaping needed
+        if (parsedUrl.protocol === 'https:' && parsedUrl.hostname === 'github.com') {
+            return parsedUrl.href;
+        }
+    } catch {
+        // Invalid URL
+    }
+    return '#';
 }
 
 // UI State Management
