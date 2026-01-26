@@ -118,6 +118,12 @@ async function handleFormSubmit(e: Event): Promise<void> {
         return;
     }
 
+    // Validate owner and repo names to prevent path traversal attacks
+    if (!isValidGitHubName(owner) || !isValidGitHubName(repo)) {
+        showError('Invalid repository name. Names can only contain letters, numbers, hyphens, underscores, and periods.');
+        return;
+    }
+
     if (new Date(fromDate) > new Date(toDate)) {
         showError('Start date must be before end date');
         return;
@@ -135,6 +141,20 @@ async function handleFormSubmit(e: Event): Promise<void> {
     } finally {
         hideLoading();
     }
+}
+
+// Validate GitHub owner/repo names to prevent path traversal attacks
+// GitHub naming rules: letters, numbers, hyphens, underscores, and periods
+// Explicitly reject "." and ".." which could cause path traversal
+function isValidGitHubName(name: string): boolean {
+    // Reject empty names, "." and ".." for path traversal prevention
+    if (!name || name === '.' || name === '..') {
+        return false;
+    }
+    // Only allow alphanumeric characters, hyphens, underscores, and periods
+    // This matches GitHub's naming conventions
+    const validPattern = /^[A-Za-z0-9_.-]+$/;
+    return validPattern.test(name);
 }
 
 // GitHub API Functions

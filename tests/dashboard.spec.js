@@ -158,7 +158,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Should show error since "owner " with trailing space is not a valid repository owner
     const error = page.locator('#error');
     await expect(error).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText(/Repository not found|error/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Invalid repository name|Repository not found|error/i);
   });
 
   test('should handle repository input with whitespace after slash', async ({ page }) => {
@@ -180,7 +180,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Should show error since " repo" with leading space is not a valid repository name
     const error = page.locator('#error');
     await expect(error).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText(/Repository not found|error/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Invalid repository name|Repository not found|error/i);
   });
 
   test('should show error when start date is after end date', async ({ page }) => {
