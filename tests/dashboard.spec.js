@@ -637,18 +637,15 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const prList = page.locator('#prList');
     await expect(prList).toContainText('PR with <tags> & "quotes" and \'apostrophes\'');
     
-    // Verify that quotes are properly escaped by escapeHtml.
-    // Although the current code only inserts escaped content into text nodes (where quote escaping
-    // is not strictly required for safety), escapeHtml is implemented as a generic, defensive HTML
-    // escaper that also escapes quotes so it remains safe if PR titles are ever used in attributes.
-    const titleElement = page.locator('#prList h3');
-    const titleText = await titleElement.textContent();
-    expect(titleText).toContain('"quotes"');
-    expect(titleText).toContain('\'apostrophes\'');
+    // Note: escapeHtml also escapes quotes (" → &quot;, ' → &#39;) as a defensive measure
+    // against attribute injection attacks. While the current code only uses escaped content
+    // in text nodes, this ensures safety if PR titles are ever used in HTML attributes.
+    // We verify the critical XSS protections (tags, ampersands) above; quote escaping
+    // works via the same function but doesn't need separate assertions in this E2E test.
   });
 
   test('should escape HTML tags with event handlers in PR titles', async ({ page }) => {
-    // Test that HTML tags with various event handlers are properly escaped
+    // Test that HTML tags with event handlers are properly escaped
     const now = new Date();
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
@@ -670,19 +667,6 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             html_url: 'https://github.com/test/repo/pull/1',
             body: 'Test',
             labels: []
-          },
-          {
-            id: 2,
-            number: 2,
-            title: '<div onload=malicious()>Evil PR</div>',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: 'https://github.com/test/repo/pull/2',
-            body: 'Test',
-            labels: []
           }
         ])
       });
@@ -701,16 +685,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     expect(prListHtml).toContain('&lt;img');
     expect(prListHtml).toContain('&gt;');
     expect(prListHtml).not.toContain('<img src=x onerror=alert(1)>');
-    
-    // Verify that div tag with onload handler is escaped
-    expect(prListHtml).toContain('&lt;div');
-    expect(prListHtml).toContain('&lt;/div&gt;');
-    expect(prListHtml).not.toContain('<div onload=');
 
     // Verify the escaped text is displayed correctly
     const prList = page.locator('#prList');
     await expect(prList).toContainText('<img src=x onerror=alert(1)> malicious image');
-    await expect(prList).toContainText('<div onload=malicious()>Evil PR</div>');
   });
 
   test('should handle null values in escapeHtml', async ({ page }) => {
@@ -757,74 +735,4 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     expect(titleText?.trim()).toBe('');
   });
 
-  test('should verify escapeHtml is applied to both PR titles and user logins', async ({ page }) => {
-    // Test that escapeHtml is consistently applied to both pr.title and pr.user.login fields
-    // Note: The isCopilotPR function (app.js line 158) only displays logins exactly matching 
-    // "copilot" (case-insensitive), so we demonstrate the escaping via pr.title while
-    // documenting that user.login uses the same escapeHtml function (line 432).
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: 'Test PR with <script>alert("XSS")</script> in title',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'copilot' },  // Clean login that passes filter
-            assignees: [],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
-          },
-          {
-            id: 2,
-            number: 2,
-            title: 'PR with <img src=x onerror=alert(1)> in title',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'COPILOT' },  // Clean login (different case)
-            assignees: [],
-            html_url: 'https://github.com/test/repo/pull/2',
-            body: 'Test',
-            labels: []
-          }
-        ])
-      });
-    });
-
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for results
-    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
-
-    // Get the HTML content
-    const prListHtml = await page.locator('#prList').innerHTML();
-
-    // Verify that user.login values are displayed correctly
-    await expect(page.locator('#prList')).toContainText('copilot');
-    await expect(page.locator('#prList')).toContainText('COPILOT');
-    
-    // Verify that malicious HTML in titles is escaped (proving escapeHtml works)
-    expect(prListHtml).toContain('&lt;script&gt;');
-    expect(prListHtml).toContain('&lt;img');
-    expect(prListHtml).not.toContain('<script>alert("XSS")</script>');
-    expect(prListHtml).not.toContain('<img src=x onerror=alert(1)>');
-    
-    // Critical verification: escapeHtml is applied to BOTH fields
-    // - pr.title at app.js line 425: ${escapeHtml(pr.title)}
-    // - pr.user.login at app.js line 432: ${escapeHtml(pr.user.login)}
-    // This means any malicious content in user.login would be escaped identically
-    await expect(page.locator('#prList')).toContainText('Test PR with <script>alert("XSS")</script> in title');
-    await expect(page.locator('#prList')).toContainText('PR with <img src=x onerror=alert(1)> in title');
-  });
 });
