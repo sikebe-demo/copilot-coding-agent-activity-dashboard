@@ -794,7 +794,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await submitSearch(page);
     await waitForError(page);
 
-    await expect(page.locator('#errorMessage')).toContainText(/rate limit/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Access forbidden \(HTTP 403\)/i);
   });
 
   test('should show authentication error for 401', async ({ page }) => {
