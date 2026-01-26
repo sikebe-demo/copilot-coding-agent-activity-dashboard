@@ -420,7 +420,7 @@ function displayPRList(prs) {
         const config = statusConfig[status];
 
         const prElement = document.createElement('div');
-        prElement.className = 'pr-item p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
+        prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
         prElement.innerHTML = `
             <div class="flex items-start justify-between gap-4 mb-3">
                 <div class="flex items-center gap-2 flex-shrink-0">
