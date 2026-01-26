@@ -200,7 +200,9 @@ function isValidGitHubName(name: string): boolean {
 function getCacheKey(owner: string, repo: string, fromDate: string, toDate: string, hasToken: boolean): string {
     // Include authentication status in cache key to prevent serving authenticated data to unauthenticated users
     const authSuffix = hasToken ? '_auth' : '_noauth';
-    return `${CACHE_KEY_PREFIX}${owner}_${repo}_${fromDate}_${toDate}${authSuffix}`;
+    // Use JSON.stringify to avoid ambiguous underscore-separated encoding that can cause cache key collisions
+    const paramsKey = JSON.stringify({ owner, repo, fromDate, toDate });
+    return `${CACHE_KEY_PREFIX}${paramsKey}${authSuffix}`;
 }
 
 function getFromCache(cacheKey: string): CacheEntry | null {
