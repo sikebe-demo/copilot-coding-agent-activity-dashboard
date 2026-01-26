@@ -363,6 +363,7 @@ async function fetchCopilotPRsWithSearchAPI(
     let page = 1;
     const perPage = 100; // Search API max is 100
     let rateLimitInfo: RateLimitInfo | null = null;
+    let totalCount = 0;
 
     while (true) {
         const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&sort=created&order=desc`;
@@ -404,6 +405,7 @@ async function fetchCopilotPRsWithSearchAPI(
 
         const searchResponse: SearchResponse = await response.json();
         const items = searchResponse.items;
+        totalCount = searchResponse.total_count;
 
         if (items.length === 0) break;
 
@@ -428,6 +430,13 @@ async function fetchCopilotPRsWithSearchAPI(
 
         // Search API has a limit of 1000 results (10 pages of 100)
         if (page >= 10) {
+            // If total_count exceeds 1000, warn the user about incomplete results
+            if (totalCount > 1000) {
+                throw new Error(
+                    `Results truncated: Found ${totalCount} PRs but can only retrieve 1000 due to GitHub Search API limitations. ` +
+                    `Please narrow your date range to see complete results.`
+                );
+            }
             break;
         }
 
