@@ -1,8 +1,348 @@
 import { test, expect } from '@playwright/test';
 
+// ============================================================================
+// Test Constants
+// ============================================================================
+
+const DEFAULT_TIMEOUT = 10000;
+const RATE_LIMIT_TIMEOUT = 5000;
+
+// ============================================================================
+// Date Helpers
+// ============================================================================
+
+/**
+ * Returns a Date object for N days ago from now
+ * @param {number} days - Number of days ago
+ * @returns {Date}
+ */
+function getDaysAgo(days) {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date;
+}
+
+/**
+ * Returns an ISO string for N days ago
+ * @param {number} days - Number of days ago
+ * @returns {string}
+ */
+function getDaysAgoISO(days) {
+  return getDaysAgo(days).toISOString();
+}
+
+// ============================================================================
+// PR Data Helpers
+// ============================================================================
+
+/**
+ * Creates a default PR object with sensible defaults
+ * @param {object} overrides - Properties to override
+ * @returns {object} PR object compatible with createSearchResponse
+ */
+function createPR(overrides = {}) {
+  const defaults = {
+    id: 1,
+    number: 1,
+    title: 'Test PR',
+    state: 'open',
+    merged_at: null,
+    created_at: getDaysAgoISO(5),
+    user: { login: 'copilot' },
+    html_url: 'https://github.com/test/repo/pull/1'
+  };
+  return { ...defaults, ...overrides };
+}
+
+/**
+ * Creates multiple PRs with auto-incrementing IDs
+ * @param {Array<object>} prConfigs - Array of PR configuration overrides
+ * @returns {Array<object>} Array of PR objects
+ */
+function createPRs(prConfigs) {
+  return prConfigs.map((config, index) => createPR({
+    id: index + 1,
+    number: index + 1,
+    html_url: `https://github.com/test/repo/pull/${index + 1}`,
+    ...config
+  }));
+}
+
+// ============================================================================
+// API Mock Helpers
+// ============================================================================
+
+/**
+ * Sets up a mock for the GitHub Search API
+ * @param {Page} page - Playwright page object
+ * @param {object} options - Mock configuration
+ * @param {Array} options.prs - Array of PR data (will be passed to createSearchResponse)
+ * @param {number} options.status - HTTP status code (default: 200)
+ * @param {object} options.headers - Custom headers (merged with rate limit headers)
+ * @param {object} options.body - Custom response body (overrides prs)
+ * @param {number} options.delay - Response delay in ms
+ * @param {Function} options.onRequest - Callback when request is made
+ */
+async function mockSearchAPI(page, options = {}) {
+  const {
+    prs = [],
+    status = 200,
+    headers = {},
+    body = null,
+    delay = 0,
+    onRequest = null
+  } = options;
+
+  await page.route('https://api.github.com/search/issues**', async route => {
+    if (onRequest) {
+      onRequest(route.request());
+    }
+    if (delay > 0) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    await route.fulfill({
+      status,
+      headers: { ...createRateLimitHeaders(), ...headers },
+      body: JSON.stringify(body ?? createSearchResponse(prs))
+    });
+  });
+}
+
+/**
+ * Sets up a counter-based mock for tracking API calls
+ * @param {Page} page - Playwright page object
+ * @param {Array} prs - Array of PR data
+ * @returns {{ getCount: () => number }} Object with getCount method
+ */
+async function mockSearchAPIWithCounter(page, prs = []) {
+  let requestCount = 0;
+  await mockSearchAPI(page, {
+    prs,
+    onRequest: () => { requestCount++; }
+  });
+  return { getCount: () => requestCount };
+}
+
+// ============================================================================
+// Form Interaction Helpers
+// ============================================================================
+
+/**
+ * Fills the search form and submits
+ * @param {Page} page - Playwright page object
+ * @param {object} options - Form options
+ * @param {string} options.repo - Repository name (default: 'test/repo')
+ * @param {string} options.token - GitHub token (optional)
+ * @param {string} options.fromDate - From date (optional)
+ * @param {string} options.toDate - To date (optional)
+ */
+async function submitSearch(page, options = {}) {
+  const { repo = 'test/repo', token, fromDate, toDate } = options;
+
+  await page.fill('#repoInput', repo);
+  if (token) {
+    await page.fill('#tokenInput', token);
+  }
+  if (fromDate) {
+    await page.fill('#fromDate', fromDate);
+  }
+  if (toDate) {
+    await page.fill('#toDate', toDate);
+  }
+  await page.click('#searchButton');
+}
+
+/**
+ * Waits for the results section to be visible
+ * @param {Page} page - Playwright page object
+ */
+async function waitForResults(page) {
+  await page.waitForSelector('#results', { state: 'visible', timeout: DEFAULT_TIMEOUT });
+}
+
+/**
+ * Waits for the PR list to be visible
+ * @param {Page} page - Playwright page object
+ */
+async function waitForPRList(page) {
+  await page.waitForSelector('#prList', { state: 'visible', timeout: DEFAULT_TIMEOUT });
+}
+
+/**
+ * Waits for the error message to be visible
+ * @param {Page} page - Playwright page object
+ */
+async function waitForError(page) {
+  await page.waitForSelector('#error', { state: 'visible', timeout: DEFAULT_TIMEOUT });
+}
+
+/**
+ * Waits for the rate limit info to be visible
+ * @param {Page} page - Playwright page object
+ */
+async function waitForRateLimitInfo(page) {
+  await page.waitForSelector('#rateLimitInfo', { state: 'visible', timeout: RATE_LIMIT_TIMEOUT });
+}
+
+/**
+ * Waits for the chart canvas to be visible
+ * @param {Page} page - Playwright page object
+ */
+async function waitForChart(page) {
+  await page.waitForSelector('#prChart canvas', { state: 'visible', timeout: DEFAULT_TIMEOUT });
+}
+
+// ============================================================================
+// GitHub API Response Helpers
+// ============================================================================
+
+/**
+ * Helper function to create Search API response format
+ *
+ * Based on GitHub REST API documentation:
+ * https://docs.github.com/en/rest/search/search#search-issues-and-pull-requests
+ *
+ * Response schema (simplified for testing):
+ * {
+ *   total_count: number,
+ *   incomplete_results: boolean,
+ *   items: SearchIssueItem[]
+ * }
+ *
+ * SearchIssueItem includes (relevant fields):
+ * - id, node_id, number, title, state
+ * - url, repository_url, labels_url, comments_url, events_url, html_url
+ * - user: { login, id, node_id, avatar_url, ... }
+ * - labels: [], assignee, milestone
+ * - comments, created_at, updated_at, closed_at
+ * - pull_request: { url, html_url, diff_url, patch_url, merged_at? }
+ * - body, score, locked, author_association, state_reason
+ *
+ * Note: merged_at is included in pull_request object for PRs (observed in real API responses)
+ */
+function createSearchResponse(prs) {
+  return {
+    total_count: prs.length,
+    incomplete_results: false,
+    items: prs.map((pr, index) => {
+      // Extract owner/repo from html_url if available
+      const urlMatch = pr.html_url?.match(/github\.com\/([^/]+)\/([^/]+)\/pull/);
+      const owner = urlMatch ? urlMatch[1] : 'test';
+      const repo = urlMatch ? urlMatch[2] : 'repo';
+
+      return {
+        // Core identifiers
+        id: pr.id,
+        node_id: `PR_${pr.id}`,
+        number: pr.number,
+
+        // Content
+        title: pr.title,
+        body: pr.body || '',
+
+        // URLs (following GitHub API structure)
+        url: `https://api.github.com/repos/${owner}/${repo}/issues/${pr.number}`,
+        repository_url: `https://api.github.com/repos/${owner}/${repo}`,
+        labels_url: `https://api.github.com/repos/${owner}/${repo}/issues/${pr.number}/labels{/name}`,
+        comments_url: `https://api.github.com/repos/${owner}/${repo}/issues/${pr.number}/comments`,
+        events_url: `https://api.github.com/repos/${owner}/${repo}/issues/${pr.number}/events`,
+        html_url: pr.html_url,
+
+        // User object (full structure as per API docs)
+        user: {
+          login: pr.user?.login || 'copilot',
+          id: pr.user?.id || 1000000 + index,
+          node_id: `U_${pr.user?.id || 1000000 + index}`,
+          avatar_url: pr.user?.avatar_url || `https://avatars.githubusercontent.com/u/${pr.user?.id || 1000000 + index}?v=4`,
+          gravatar_id: '',
+          url: `https://api.github.com/users/${pr.user?.login || 'copilot'}`,
+          html_url: `https://github.com/${pr.user?.login || 'copilot'}`,
+          followers_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/followers`,
+          following_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/following{/other_user}`,
+          gists_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/gists{/gist_id}`,
+          starred_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/starred{/owner}{/repo}`,
+          subscriptions_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/subscriptions`,
+          organizations_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/orgs`,
+          repos_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/repos`,
+          events_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/events{/privacy}`,
+          received_events_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/received_events`,
+          type: 'User',
+          site_admin: false
+        },
+
+        // Labels and assignments
+        labels: pr.labels || [],
+        assignee: pr.assignee || null,
+        assignees: pr.assignees || [],
+        milestone: pr.milestone || null,
+
+        // State
+        state: pr.state,
+        locked: pr.locked || false,
+
+        // Timestamps
+        created_at: pr.created_at,
+        updated_at: pr.updated_at || pr.created_at,
+        closed_at: pr.state === 'closed' ? (pr.closed_at || pr.created_at) : null,
+
+        // PR-specific data (indicates this is a PR, not an issue)
+        // Note: merged_at is available in pull_request object
+        pull_request: {
+          url: `https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}`,
+          html_url: pr.html_url,
+          diff_url: `${pr.html_url}.diff`,
+          patch_url: `${pr.html_url}.patch`,
+          merged_at: pr.merged_at
+        },
+
+        // Metadata
+        comments: pr.comments || 0,
+        score: 1.0,
+        author_association: pr.author_association || 'CONTRIBUTOR',
+        state_reason: pr.state === 'closed' ? (pr.merged_at ? 'completed' : 'not_planned') : null
+      };
+    })
+  };
+}
+
+/**
+ * Helper to create rate limit headers
+ *
+ * Based on GitHub REST API documentation:
+ * https://docs.github.com/en/rest/rate-limit/rate-limit
+ * https://docs.github.com/en/rest/search/search#rate-limit
+ *
+ * Rate limits for Search API:
+ * - Unauthenticated: 10 requests per minute
+ * - Authenticated: 30 requests per minute
+ *
+ * Headers returned:
+ * - X-RateLimit-Limit: Maximum requests allowed
+ * - X-RateLimit-Remaining: Requests remaining in current window
+ * - X-RateLimit-Reset: Unix timestamp when the rate limit resets
+ * - X-RateLimit-Used: Requests used in current window
+ * - X-RateLimit-Resource: The rate limit resource (e.g., "search")
+ */
+function createRateLimitHeaders(remaining = 4999, limit = 5000, used = 1) {
+  const resetTimestamp = Math.floor(Date.now() / 1000) + 3600;
+  return {
+    'Content-Type': 'application/json',
+    'X-RateLimit-Limit': String(limit),
+    'X-RateLimit-Remaining': String(remaining),
+    'X-RateLimit-Reset': String(resetTimestamp),
+    'X-RateLimit-Used': String(used),
+    'X-RateLimit-Resource': 'search',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Expose-Headers': 'X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Used, X-RateLimit-Resource'
+  };
+}
+
 test.describe('Copilot Coding Agent PR Dashboard', () => {
   test.beforeEach(async ({ page }) => {
+    // Clear localStorage to ensure clean state for each test
     await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
   });
 
   test('should display the main page with correct title', async ({ page }) => {
@@ -102,84 +442,33 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should handle repository input with leading and trailing whitespace', async ({ page }) => {
-    // Mock GitHub API to verify trimming works
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: 'Test PR',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'Copilot' },
-            assignees: [{ login: 'Copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Copilot PR',
-            labels: []
-          }
-        ])
-      });
-    });
+    await mockSearchAPI(page, { prs: [createPR()] });
 
     // Fill form with whitespace on both sides
-    await page.fill('#repoInput', '  test/repo  ');
-    await page.click('#searchButton');
+    await submitSearch(page, { repo: '  test/repo  ' });
 
     // Should process successfully and show results (whitespace is trimmed)
-    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
-    const totalPRs = page.locator('#totalPRs');
-    await expect(totalPRs).toContainText('1');
+    await waitForResults(page);
+    await expect(page.locator('#totalPRs')).toContainText('1');
   });
 
   test('should handle repository input with whitespace before slash', async ({ page }) => {
-    // Mock GitHub API to return error for invalid repository name with whitespace
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 404,
-        contentType: 'application/json',
-        body: JSON.stringify({ message: 'Not Found' })
-      });
-    });
+    await mockSearchAPI(page, { status: 404, body: { message: 'Not Found' } });
 
-    // Fill form with whitespace before slash
     // trim() only removes leading/trailing whitespace, not internal spaces
-    // So "owner /repo" will split into ["owner ", "repo"]
-    await page.fill('#repoInput', 'owner /repo');
-    await page.click('#searchButton');
+    await submitSearch(page, { repo: 'owner /repo' });
 
-    // Should show error since "owner " with trailing space is not a valid repository owner
-    const error = page.locator('#error');
-    await expect(error).toBeVisible();
+    await expect(page.locator('#error')).toBeVisible();
     await expect(page.locator('#errorMessage')).toContainText(/Invalid repository name|Repository not found|error/i);
   });
 
   test('should handle repository input with whitespace after slash', async ({ page }) => {
-    // Mock GitHub API to return error for invalid repository name with whitespace
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 404,
-        contentType: 'application/json',
-        body: JSON.stringify({ message: 'Not Found' })
-      });
-    });
+    await mockSearchAPI(page, { status: 404, body: { message: 'Not Found' } });
 
-    // Fill form with whitespace after slash
     // trim() only removes leading/trailing whitespace, not internal spaces
-    // So "owner/ repo" will split into ["owner", " repo"]
-    await page.fill('#repoInput', 'owner/ repo');
-    await page.click('#searchButton');
+    await submitSearch(page, { repo: 'owner/ repo' });
 
-    // Should show error since " repo" with leading space is not a valid repository name
-    const error = page.locator('#error');
-    await expect(error).toBeVisible();
+    await expect(page.locator('#error')).toBeVisible();
     await expect(page.locator('#errorMessage')).toContainText(/Invalid repository name|Repository not found|error/i);
   });
 
@@ -243,307 +532,97 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should show loading state when searching', async ({ page }) => {
-    // Mock the GitHub API to delay response
-    await page.route('https://api.github.com/**', async route => {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      await route.fulfill({
-        status: 404,
-        body: JSON.stringify({ message: 'Not Found' })
-      });
-    });
+    await mockSearchAPI(page, { status: 404, body: { message: 'Not Found' }, delay: 100 });
 
-    // Fill form and submit
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
+    await submitSearch(page);
 
     // Loading should be visible briefly
-    const loading = page.locator('#loading');
-    await expect(loading).toBeVisible();
+    await expect(page.locator('#loading')).toBeVisible();
   });
 
   test('should handle API errors gracefully', async ({ page }) => {
-    // Mock GitHub API error
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 404,
-        body: JSON.stringify({ message: 'Not Found' })
-      });
-    });
+    await mockSearchAPI(page, { status: 404, body: { message: 'Not Found' } });
 
-    // Fill form and submit
-    await page.fill('#repoInput', 'test/nonexistent');
-    await page.click('#searchButton');
+    await submitSearch(page, { repo: 'test/nonexistent' });
+    await waitForError(page);
 
-    // Wait for error
-    await page.waitForSelector('#error', { state: 'visible' });
-
-    // Check error message
-    const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/Repository not found|error/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Repository not found|error/i);
   });
 
   test('should display results for valid repository', async ({ page }) => {
-    // Mock GitHub API with sample data (using current dates)
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-    const threeDaysAgo = new Date(now);
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const prs = createPRs([
+      { title: 'Test PR by Copilot', state: 'closed', merged_at: getDaysAgoISO(5), created_at: getDaysAgoISO(5) },
+      { title: 'Another Copilot PR', state: 'open', created_at: getDaysAgoISO(3) }
+    ]);
+    await mockSearchAPI(page, { prs });
 
-    await page.route('https://api.github.com/**', route => {
-      const prs = [
-        {
-          id: 1,
-          number: 1,
-          title: 'Test PR by Copilot',
-          state: 'closed',
-          merged_at: fiveDaysAgo.toISOString(),
-          created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'Copilot' },
-          assignees: [{ login: 'Copilot' }],
-          html_url: 'https://github.com/test/repo/pull/1',
-          body: 'Created by Copilot Coding Agent',
-          labels: []
-        },
-        {
-          id: 2,
-          number: 2,
-          title: 'Another Copilot PR',
-          state: 'open',
-          merged_at: null,
-          created_at: threeDaysAgo.toISOString(),
-          user: { login: 'Copilot' },
-          assignees: [{ login: 'Copilot' }],
-          html_url: 'https://github.com/test/repo/pull/2',
-          body: 'Copilot generated PR',
-          labels: []
-        }
-      ];
-
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(prs)
-      });
-    });
-
-    // Fill form with valid data
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for results with longer timeout
-    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
+    await submitSearch(page);
+    await waitForResults(page);
 
     // Check summary cards
-    const totalPRs = page.locator('#totalPRs');
-    await expect(totalPRs).toContainText('2');
-
-    const mergedPRs = page.locator('#mergedPRs');
-    await expect(mergedPRs).toContainText('1');
-
-    const openPRs = page.locator('#openPRs');
-    await expect(openPRs).toContainText('1');
-
-    // Check merge rate
-    const mergeRate = page.locator('#mergeRateValue');
-    await expect(mergeRate).toContainText('50%');
+    await expect(page.locator('#totalPRs')).toContainText('2');
+    await expect(page.locator('#mergedPRs')).toContainText('1');
+    await expect(page.locator('#openPRs')).toContainText('1');
+    await expect(page.locator('#mergeRateValue')).toContainText('50%');
   });
 
   test('should display PR list with correct information', async ({ page }) => {
-    // Mock GitHub API with current date
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const prs = [createPR({
+      number: 123,
+      title: 'Feature: Add new component',
+      state: 'closed',
+      merged_at: getDaysAgoISO(5),
+      html_url: 'https://github.com/test/repo/pull/123'
+    })];
+    await mockSearchAPI(page, { prs });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 123,
-            title: 'Feature: Add new component',
-            state: 'closed',
-            merged_at: fiveDaysAgo.toISOString(),
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'Copilot' },
-            assignees: [{ login: 'Copilot' }],
-            html_url: 'https://github.com/test/repo/pull/123',
-            body: 'Copilot generated',
-            labels: []
-          }
-        ])
-      });
-    });
+    await submitSearch(page);
+    await waitForPRList(page);
 
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for PR list with longer timeout
-    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
-
-    // Check PR details
     const prList = page.locator('#prList');
     await expect(prList).toContainText('Feature: Add new component');
     await expect(prList).toContainText('#123');
-    await expect(prList).toContainText('Copilot');
+    await expect(prList).toContainText('copilot');
     await expect(prList).toContainText('Merged');
   });
 
   test('should display chart when results are shown', async ({ page }) => {
-    // Mock GitHub API with current date
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    await mockSearchAPI(page, { prs: [createPR({ state: 'closed', merged_at: getDaysAgoISO(5) })] });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: 'Test PR',
-            state: 'closed',
-            merged_at: fiveDaysAgo.toISOString(),
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'Copilot' },
-            assignees: [{ login: 'Copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Copilot PR',
-            labels: []
-          }
-        ])
-      });
-    });
+    await submitSearch(page);
+    await page.waitForSelector('#prChart', { state: 'visible', timeout: DEFAULT_TIMEOUT });
 
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for chart with longer timeout
-    await page.waitForSelector('#prChart', { state: 'visible', timeout: 10000 });
-
-    // Check that chart canvas exists
-    const chart = page.locator('#prChart');
-    await expect(chart).toBeVisible();
+    await expect(page.locator('#prChart')).toBeVisible();
   });
 
   test('should display all dates in range including days with no PR data', async ({ page }) => {
     // Create PRs for specific dates only (skipping some days)
-    const prs = [
-      {
-        id: 1,
-        number: 1,
-        title: 'PR on day 2',
-        state: 'closed',
-        merged_at: '2026-01-02T10:00:00Z',
-        created_at: '2026-01-02T10:00:00Z',
-        user: { login: 'Copilot' },
-        assignees: [{ login: 'Copilot' }],
-        html_url: 'https://github.com/test/repo/pull/1',
-        body: 'Copilot PR',
-        labels: []
-      },
-      {
-        id: 2,
-        number: 2,
-        title: 'PR on day 5',
-        state: 'closed',
-        merged_at: '2026-01-05T10:00:00Z',
-        created_at: '2026-01-05T10:00:00Z',
-        user: { login: 'Copilot' },
-        assignees: [{ login: 'Copilot' }],
-        html_url: 'https://github.com/test/repo/pull/2',
-        body: 'Copilot PR',
-        labels: []
-      },
-      {
-        id: 3,
-        number: 3,
-        title: 'PR on day 7',
-        state: 'open',
-        merged_at: null,
-        created_at: '2026-01-07T10:00:00Z',
-        user: { login: 'Copilot' },
-        assignees: [{ login: 'Copilot' }],
-        html_url: 'https://github.com/test/repo/pull/3',
-        body: 'Copilot PR',
-        labels: []
-      }
-    ];
-
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(prs)
-      });
-    });
+    const prs = createPRs([
+      { title: 'PR on day 2', state: 'closed', merged_at: '2026-01-02T10:00:00Z', created_at: '2026-01-02T10:00:00Z' },
+      { title: 'PR on day 5', state: 'closed', merged_at: '2026-01-05T10:00:00Z', created_at: '2026-01-05T10:00:00Z' },
+      { title: 'PR on day 7', state: 'open', created_at: '2026-01-07T10:00:00Z' }
+    ]);
+    await mockSearchAPI(page, { prs });
 
     await page.goto('/');
-    
-    // Set specific date range (1/1 to 1/10 - 10 days)
-    await page.fill('#fromDate', '2026-01-01');
-    await page.fill('#toDate', '2026-01-10');
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
+    await submitSearch(page, { repo: 'test/repo', fromDate: '2026-01-01', toDate: '2026-01-10' });
+    await waitForChart(page);
 
-    // Wait for chart canvas to be visible
-    await page.waitForSelector('#prChart canvas', { state: 'visible', timeout: 10000 });
-    
-    // Verify the chart canvas exists and has proper dimensions (indicating it rendered)
     const canvas = page.locator('#prChart canvas');
     await expect(canvas).toBeVisible();
-    
-    // Get canvas bounding box to verify it rendered with content
     const canvasBox = await canvas.boundingBox();
     expect(canvasBox.width).toBeGreaterThan(0);
     expect(canvasBox.height).toBeGreaterThan(0);
   });
 
   test('should handle empty results', async ({ page }) => {
-    // Mock GitHub API with no Copilot PRs (using current date)
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    await mockSearchAPI(page, { prs: [] });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: 'Regular PR',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'regular-user' },
-            assignees: [{ login: 'regular-user' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Regular PR body',
-            labels: []
-          }
-        ])
-      });
-    });
+    await submitSearch(page);
+    await waitForResults(page);
 
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for results with longer timeout
-    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
-
-    // Check that total is 0
-    const totalPRs = page.locator('#totalPRs');
-    await expect(totalPRs).toContainText('0');
-
-    // Check empty state message
-    const prList = page.locator('#prList');
-    await expect(prList).toContainText(/No PRs created by Copilot Coding Agent found/i);
+    await expect(page.locator('#totalPRs')).toContainText('0');
+    await expect(page.locator('#prList')).toContainText(/No PRs created by Copilot Coding Agent found/i);
   });
 
   test('should have accessible labels and ARIA attributes', async ({ page }) => {
@@ -559,43 +638,13 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(page.locator('#toDate')).toHaveAttribute('required', '');
   });
 
-  test('should open PR links in new tab', async ({ page, context }) => {
-    // Mock GitHub API with current date
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+  test('should open PR links in new tab', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [createPR()] });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: 'Test PR',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'Copilot' },
-            assignees: [{ login: 'Copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Copilot PR',
-            labels: []
-          }
-        ])
-      });
-    });
+    await submitSearch(page);
+    await page.waitForSelector('#prList a[target="_blank"]', { state: 'visible', timeout: DEFAULT_TIMEOUT });
 
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for PR list with longer timeout
-    await page.waitForSelector('#prList a[target="_blank"]', { state: 'visible', timeout: 10000 });
-
-    // Check that links have target="_blank"
-    const links = page.locator('#prList a[target="_blank"]');
-    await expect(links.first()).toHaveAttribute('target', '_blank');
+    await expect(page.locator('#prList a[target="_blank"]').first()).toHaveAttribute('target', '_blank');
   });
 
   test('should validate date range', async ({ page }) => {
@@ -619,497 +668,534 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should detect Copilot PRs by author only', async ({ page }) => {
-    // Test the detection method: Only PRs with author login matching "copilot" (case-insensitive) are detected
-    // PRs assigned to Copilot but authored by someone else should NOT be detected
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    // Search API already filters by author:app/copilot-swe-agent
+    await mockSearchAPI(page, { prs: [createPR({ title: 'PR authored by Copilot' })] });
 
-    await page.route('https://api.github.com/**', route => {
-      const prs = [
-        {
-          id: 1,
-          number: 1,
-          title: 'PR authored by Copilot',
-          state: 'closed',
-          merged_at: fiveDaysAgo.toISOString(),
-          created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'copilot' },
-          assignees: [{ login: 'copilot' }, { login: 'SIkebe' }],
-          html_url: 'https://github.com/test/repo/pull/1',
-          body: 'Adds feature',
-          labels: [],
-          head: { ref: 'copilot/add-feature' }
-        },
-        {
-          id: 2,
-          number: 2,
-          title: 'Human PR assigned to Copilot',
-          state: 'open',
-          merged_at: null,
-          created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'human-user' },
-          assignees: [{ login: 'copilot' }],
-          html_url: 'https://github.com/test/repo/pull/2',
-          body: 'Human created PR assigned to Copilot for help',
-          labels: [],
-          head: { ref: 'feature/human-work' }
-        },
-        {
-          id: 3,
-          number: 3,
-          title: 'Regular PR with copilot branch',
-          state: 'open',
-          merged_at: null,
-          created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'regular-user' },
-          assignees: [{ login: 'regular-user' }],
-          html_url: 'https://github.com/test/repo/pull/3',
-          body: 'Manual changes',
-          labels: [],
-          head: { ref: 'copilot/manual-branch' }
-        }
-      ];
+    await submitSearch(page);
+    await waitForResults(page);
 
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(prs)
-      });
-    });
-
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for results
-    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
-
-    // Only the PR authored by Copilot should be detected
-    // Human PRs assigned to Copilot should NOT be detected
-    // Regular user PRs with copilot/ branch should NOT be detected
-    const totalPRs = page.locator('#totalPRs');
-    await expect(totalPRs).toContainText('1');
-
-    // Verify the correct PR is shown
-    const prList = page.locator('#prList');
-    await expect(prList).toContainText('PR authored by Copilot');
-    await expect(prList).not.toContainText('Human PR assigned to Copilot');
-    await expect(prList).not.toContainText('Regular PR with copilot branch');
+    await expect(page.locator('#totalPRs')).toContainText('1');
+    await expect(page.locator('#prList')).toContainText('PR authored by Copilot');
   });
 
   test('should escape HTML in PR titles to prevent XSS', async ({ page }) => {
-    // Test that PR titles with malicious HTML/JavaScript are properly escaped
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    await mockSearchAPI(page, { prs: [createPR({ title: '<script>alert("XSS")</script>Malicious PR' })] });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: '<script>alert("XSS")</script>Malicious PR',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
-          }
-        ])
-      });
-    });
+    await submitSearch(page);
+    await waitForPRList(page);
 
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for results
-    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
-
-    // Get the HTML content
     const prListHtml = await page.locator('#prList').innerHTML();
-
-    // Verify that script tags are escaped
     expect(prListHtml).toContain('&lt;script&gt;');
     expect(prListHtml).toContain('&lt;/script&gt;');
     expect(prListHtml).not.toContain('<script>alert');
-
-    // Verify the escaped text is displayed correctly
-    const prList = page.locator('#prList');
-    await expect(prList).toContainText('<script>alert("XSS")</script>Malicious PR');
+    await expect(page.locator('#prList')).toContainText('<script>alert("XSS")</script>Malicious PR');
   });
 
   test('should escape HTML entities in PR titles', async ({ page }) => {
-    // Test that various HTML entities including quotes are properly escaped
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    await mockSearchAPI(page, { prs: [createPR({ title: 'PR with <tags> & "quotes" and \'apostrophes\'' })] });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: 'PR with <tags> & "quotes" and \'apostrophes\'',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
-          }
-        ])
-      });
-    });
+    await submitSearch(page);
+    await waitForPRList(page);
 
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for results
-    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
-
-    // Get the HTML content
     const prListHtml = await page.locator('#prList').innerHTML();
-
-    // Verify that all dangerous HTML characters are escaped in the HTML source
-    // Tags and ampersand must be escaped to prevent XSS
     expect(prListHtml).toContain('&lt;tags&gt;');
     expect(prListHtml).toContain('&amp;');
-    // Verify that the dangerous tags are not present unescaped
     expect(prListHtml).not.toContain('<tags>');
-
-    // Verify the text is displayed correctly (browser interprets escaped HTML entities)
-    const prList = page.locator('#prList');
-    await expect(prList).toContainText('PR with <tags> & "quotes" and \'apostrophes\'');
-    
-    // Note: escapeHtml also escapes quotes (" → &quot;, ' → &#39;) as a defensive measure
-    // against attribute injection attacks. While the current code only uses escaped content
-    // in text nodes, this ensures safety if PR titles are ever used in HTML attributes.
-    // We verify the critical XSS protections (tags, ampersands) above; quote escaping
-    // works via the same function but doesn't need separate assertions in this E2E test.
+    await expect(page.locator('#prList')).toContainText('PR with <tags> & "quotes" and \'apostrophes\'');
   });
 
   test('should escape HTML tags with event handlers in PR titles', async ({ page }) => {
-    // Test that HTML tags with event handlers are properly escaped
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    await mockSearchAPI(page, { prs: [createPR({ title: '<img src=x onerror=alert(1)> malicious image' })] });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: '<img src=x onerror=alert(1)> malicious image',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'copilot' },
-            assignees: [],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
-          }
-        ])
-      });
-    });
+    await submitSearch(page);
+    await waitForPRList(page);
 
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for results
-    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
-
-    // Get the HTML content
     const prListHtml = await page.locator('#prList').innerHTML();
-
-    // Verify that img tag with onerror handler is escaped
     expect(prListHtml).toContain('&lt;img');
     expect(prListHtml).toContain('&gt;');
     expect(prListHtml).not.toContain('<img src=x onerror=alert(1)>');
-
-    // Verify the escaped text is displayed correctly
-    const prList = page.locator('#prList');
-    await expect(prList).toContainText('<img src=x onerror=alert(1)> malicious image');
+    await expect(page.locator('#prList')).toContainText('<img src=x onerror=alert(1)> malicious image');
   });
 
   test('should handle null values in escapeHtml', async ({ page }) => {
-    // Test that escapeHtml properly handles null values without throwing errors
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    await mockSearchAPI(page, { prs: [createPR({ title: null })] });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: null,
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
-          }
-        ])
-      });
-    });
+    await submitSearch(page);
+    await waitForPRList(page);
 
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for results
-    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
-
-    // Verify the PR is displayed and null title is rendered as empty string
-    const prList = page.locator('#prList');
-    await expect(prList).toBeVisible();
-    
-    // Verify that null title doesn't cause errors and displays as empty
-    const titleElement = page.locator('#prList h3').first();
-    const titleText = await titleElement.textContent();
+    // Verify null title doesn't cause errors and displays as empty
+    await expect(page.locator('#prList')).toBeVisible();
+    const titleText = await page.locator('#prList h3').first().textContent();
     expect(titleText?.trim()).toBe('');
   });
 
   test('should show rate limit error with reset time when X-RateLimit-Remaining is 0 (unauthenticated)', async ({ page }) => {
-    // Mock GitHub API with rate limit error - unauthenticated scenario
-    const resetTimestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 403,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-RateLimit-Remaining': '0',
-          'X-RateLimit-Reset': String(resetTimestamp),
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': 'X-RateLimit-Remaining, X-RateLimit-Reset'
-        },
-        body: JSON.stringify({ message: 'API rate limit exceeded' })
-      });
+    const resetTimestamp = Math.floor(Date.now() / 1000) + 3600;
+    await mockSearchAPI(page, {
+      status: 403,
+      headers: {
+        'X-RateLimit-Limit': '10',
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': String(resetTimestamp)
+      },
+      body: { message: 'API rate limit exceeded' }
     });
 
-    // Fill form and submit without token
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
+    await submitSearch(page);
+    await waitForError(page);
 
-    // Wait for error
-    await page.waitForSelector('#error', { state: 'visible' });
-
-    // Check error message contains rate limit info and reset time
     const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/rate limit exceeded/i);
-    await expect(errorMessage).toContainText(/resets at/i);
-    await expect(errorMessage).toContainText(/Personal Access Token|PAT/i);
+    await expect(errorMessage).toContainText(/rate limit/i);
+    await expect(errorMessage).toContainText(/Reset at/i);
   });
 
   test('should show rate limit error when X-RateLimit-Remaining is 0 (authenticated)', async ({ page }) => {
-    // Mock GitHub API with rate limit error - authenticated scenario
-    const resetTimestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 403,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-RateLimit-Remaining': '0',
-          'X-RateLimit-Reset': String(resetTimestamp),
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': 'X-RateLimit-Remaining, X-RateLimit-Reset'
-        },
-        body: JSON.stringify({ message: 'API rate limit exceeded' })
-      });
+    const resetTimestamp = Math.floor(Date.now() / 1000) + 3600;
+    await mockSearchAPI(page, {
+      status: 403,
+      headers: {
+        'X-RateLimit-Limit': '30',
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': String(resetTimestamp)
+      },
+      body: { message: 'API rate limit exceeded' }
     });
 
-    // Fill form and submit with token
-    await page.fill('#repoInput', 'test/repo');
-    await page.fill('#tokenInput', 'ghp_validtoken123');
-    await page.click('#searchButton');
+    await submitSearch(page, { token: 'ghp_validtoken123' });
+    await waitForError(page);
 
-    // Wait for error
-    await page.waitForSelector('#error', { state: 'visible' });
-
-    // Check error message contains rate limit info for authenticated user
     const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/rate limit exceeded/i);
-    await expect(errorMessage).toContainText(/resets at/i);
-    await expect(errorMessage).toContainText(/wait|different token/i);
+    await expect(errorMessage).toContainText(/rate limit/i);
+    await expect(errorMessage).toContainText(/Reset at|different token/i);
+  });
+
+  test('should show validation error for 422', async ({ page }) => {
+    await mockSearchAPI(page, {
+      status: 422,
+      headers: createRateLimitHeaders(4500),
+      body: { message: 'Validation Failed' }
+    });
+
+    await submitSearch(page, { repo: 'test/private-repo' });
+    await waitForError(page);
+
+    await expect(page.locator('#errorMessage')).toContainText(/Search query validation failed|check the repository name/i);
   });
 
   test('should show permission error for 403 when X-RateLimit-Remaining is not 0', async ({ page }) => {
-    // Mock GitHub API with permission error (403 but not rate limited)
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 403,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-RateLimit-Remaining': '4500',
-          'X-RateLimit-Reset': String(Math.floor(Date.now() / 1000) + 3600),
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': 'X-RateLimit-Remaining, X-RateLimit-Reset'
-        },
-        body: JSON.stringify({ message: 'Resource not accessible by integration' })
-      });
+    await mockSearchAPI(page, {
+      status: 403,
+      headers: createRateLimitHeaders(4500),
+      body: { message: 'Forbidden' }
     });
 
-    // Fill form and submit
-    await page.fill('#repoInput', 'test/private-repo');
-    await page.click('#searchButton');
+    await submitSearch(page, { repo: 'test/private-repo' });
+    await waitForError(page);
 
-    // Wait for error
-    await page.waitForSelector('#error', { state: 'visible' });
-
-    // Check error message shows permission error
-    const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/Access forbidden|permission/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Access forbidden.*HTTP 403.*insufficient permissions|SSO|abuse protection/i);
   });
 
   test('should show fallback error when X-RateLimit-Remaining header is missing', async ({ page }) => {
-    // Mock GitHub API with 403 but without rate limit headers
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 403,
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'Forbidden' })
       });
     });
 
-    // Fill form and submit
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
+    await submitSearch(page);
+    await waitForError(page);
 
-    // Wait for error
-    await page.waitForSelector('#error', { state: 'visible' });
-
-    // Check error message shows fallback error mentioning both possibilities
-    const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/Access forbidden/i);
-    await expect(errorMessage).toContainText(/rate limiting|permissions/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Access forbidden \(HTTP 403\)/i);
   });
 
   test('should show authentication error for 401', async ({ page }) => {
-    // Mock GitHub API with authentication error
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 401,
-        body: JSON.stringify({ message: 'Bad credentials' })
-      });
-    });
+    await mockSearchAPI(page, { status: 401, body: { message: 'Bad credentials' } });
 
-    // Fill form and submit with invalid token
-    await page.fill('#repoInput', 'test/repo');
-    await page.fill('#tokenInput', 'invalid-token');
-    await page.click('#searchButton');
+    await submitSearch(page, { token: 'invalid-token' });
+    await waitForError(page);
 
-    // Wait for error
-    await page.waitForSelector('#error', { state: 'visible' });
-
-    // Check error message shows authentication error
-    const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/Authentication failed|token.*valid/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Authentication failed|token.*valid/i);
   });
 
   test('should sanitize javascript: URLs in html_url to prevent XSS', async ({ page }) => {
-    // Test that malicious javascript: protocol URLs are sanitized to "#"
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    await mockSearchAPI(page, { prs: [createPR({ html_url: 'javascript:alert("XSS")' })] });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: 'Malicious PR with javascript URL',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: 'javascript:alert("XSS")',
-            body: 'Test',
-            labels: []
-          }
-        ])
-      });
-    });
+    await submitSearch(page);
+    await waitForPRList(page);
 
-    await page.fill('#repoInput', 'test/repo');
-    await page.click('#searchButton');
-
-    // Wait for results
-    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
-
-    // Get the link element and verify its href is sanitized to "#"
-    const prLink = page.locator('#prList a[target="_blank"]').first();
-    const href = await prLink.getAttribute('href');
+    const href = await page.locator('#prList a[target="_blank"]').first().getAttribute('href');
     expect(href).toBe('#');
-
-    // Verify the javascript: URL is NOT in the href
     expect(href).not.toContain('javascript:');
   });
 
   test('should allow valid https URLs in html_url', async ({ page }) => {
-    // Test that valid https:// URLs are preserved
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
     const validUrl = 'https://github.com/test/repo/pull/42';
+    await mockSearchAPI(page, { prs: [createPR({ number: 42, html_url: validUrl })] });
 
-    await page.route('https://api.github.com/**', route => {
-      route.fulfill({
+    await submitSearch(page);
+    await waitForPRList(page);
+
+    const href = await page.locator('#prList a[target="_blank"]').first().getAttribute('href');
+    expect(href).toBe(validUrl);
+  });
+
+  // New tests for caching and rate limit display
+  test('should display rate limit information after successful search', async ({ page }) => {
+    await mockSearchAPI(page, {
+      prs: [createPR()],
+      headers: createRateLimitHeaders(4990, 5000, 10)
+    });
+
+    await submitSearch(page);
+    await waitForResults(page);
+    await waitForRateLimitInfo(page);
+
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('GitHub Search API');
+    await expect(rateLimitInfo).toContainText('remaining');
+    await expect(rateLimitInfo).toContainText('Resets in');
+  });
+
+  test('should show cached indicator when data is from cache', async ({ page }) => {
+    const counter = await mockSearchAPIWithCounter(page, [createPR()]);
+
+    // First search
+    await submitSearch(page);
+    await waitForResults(page);
+    await waitForRateLimitInfo(page);
+
+    // Second search with same parameters (should use cache)
+    await page.click('#searchButton');
+    await waitForResults(page);
+    await page.waitForTimeout(500);
+
+    await expect(page.locator('#rateLimitInfo')).toContainText('Cached');
+    expect(counter.getCount()).toBe(1);
+  });
+
+  test('should use Search API with correct query parameters', async ({ page }) => {
+    let capturedUrl = '';
+    await mockSearchAPI(page, {
+      prs: [],
+      onRequest: (req) => { capturedUrl = req.url(); }
+    });
+
+    await submitSearch(page, { repo: 'owner/repo', fromDate: '2026-01-01', toDate: '2026-01-15' });
+    await waitForResults(page);
+
+    expect(capturedUrl).toContain('api.github.com/search/issues');
+    const decodedUrl = decodeURIComponent(capturedUrl);
+    expect(decodedUrl).toContain('repo:owner/repo');
+    expect(decodedUrl).toContain('is:pr');
+    expect(decodedUrl).toContain('author:app/copilot-swe-agent');
+    expect(decodedUrl).toContain('created:2026-01-01..2026-01-15');
+  });
+
+  test('should show warning color when rate limit is low', async ({ page }) => {
+    await mockSearchAPI(page, {
+      prs: [createPR()],
+      headers: createRateLimitHeaders(500, 5000, 4500) // 10% remaining
+    });
+
+    await submitSearch(page);
+    await waitForRateLimitInfo(page);
+
+    await expect(page.locator('#rateLimitInfo')).toContainText('Low');
+  });
+
+  test('should hide rate limit info when starting new search', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [createPR()], delay: 200 });
+
+    // First search with unique params to avoid cache
+    await submitSearch(page, { repo: 'test/repo1' });
+    await waitForRateLimitInfo(page);
+
+    // Start new search with different params
+    await submitSearch(page, { repo: 'test/repo2' });
+
+    // Rate limit info should be hidden while loading
+    await expect(page.locator('#rateLimitInfo')).toBeHidden();
+  });
+
+  test('should show warning status when rate limit is between 20-50%', async ({ page }) => {
+    await mockSearchAPI(page, {
+      prs: [createPR()],
+      headers: createRateLimitHeaders(1500, 5000, 3500) // 30% remaining
+    });
+
+    await submitSearch(page);
+    await waitForRateLimitInfo(page);
+
+    await expect(page.locator('#rateLimitInfo')).toContainText('Warning');
+  });
+
+  test('should show unauthenticated badge when rate limit is 10', async ({ page }) => {
+    await mockSearchAPI(page, {
+      prs: [createPR()],
+      headers: createRateLimitHeaders(9, 10, 1) // Unauthenticated limit
+    });
+
+    await submitSearch(page);
+    await waitForRateLimitInfo(page);
+
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Unauthenticated');
+    await expect(rateLimitInfo).toContainText('10 requests/min');
+  });
+
+  test('should show authenticated badge when rate limit is greater than 10', async ({ page }) => {
+    await mockSearchAPI(page, {
+      prs: [createPR()],
+      headers: createRateLimitHeaders(29, 30, 1) // Authenticated limit
+    });
+
+    await submitSearch(page);
+    await waitForRateLimitInfo(page);
+
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Authenticated');
+    await expect(rateLimitInfo).toContainText('30 requests/min');
+  });
+
+  test('should reject http:// URLs and sanitize to # in html_url', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [createPR({ html_url: 'http://github.com/test/repo/pull/1' })] });
+
+    await submitSearch(page);
+    await waitForPRList(page);
+
+    const href = await page.locator('#prList a[target="_blank"]').first().getAttribute('href');
+    expect(href).toBe('#');
+  });
+
+  test('should reject non-github.com URLs and sanitize to #', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [createPR({ html_url: 'https://evil.com/test/repo/pull/1' })] });
+
+    await submitSearch(page);
+    await waitForPRList(page);
+
+    const href = await page.locator('#prList a[target="_blank"]').first().getAttribute('href');
+    expect(href).toBe('#');
+  });
+
+  test('should handle PR with zero or negative number', async ({ page }) => {
+    const prs = createPRs([
+      { number: 0, title: 'PR with zero number' },
+      { number: -1, title: 'PR with negative number' }
+    ]);
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForPRList(page);
+
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('PR with zero number');
+    await expect(prList).toContainText('PR with negative number');
+
+    const prListText = await prList.textContent();
+    expect(prListText).not.toContain('#0');
+    expect(prListText).not.toContain('#-1');
+  });
+
+  test('should reject repository names with path traversal attempts', async ({ page }) => {
+    // Test ".." as repo name (path traversal attempt)
+    await page.fill('#repoInput', 'owner/..');
+    await page.click('#searchButton');
+
+    // Check error message
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText('Invalid repository name');
+  });
+
+  test('should reject repository names with single dot', async ({ page }) => {
+    // Test "." as repo name
+    await page.fill('#repoInput', 'owner/.');
+    await page.click('#searchButton');
+
+    // Check error message
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText('Invalid repository name');
+  });
+
+  test('should cache data and use it for subsequent requests', async ({ page }) => {
+    const counter = await mockSearchAPIWithCounter(page, [createPR({ title: 'Cached PR' })]);
+
+    // First request
+    await submitSearch(page, { repo: 'cache-test/repo' });
+    await waitForResults(page);
+    expect(counter.getCount()).toBe(1);
+
+    // Second request with same params - should use cache
+    await page.click('#searchButton');
+    await waitForResults(page);
+    expect(counter.getCount()).toBe(1);
+
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Cached');
+    await expect(rateLimitInfo).toContainText('No API call made');
+  });
+
+  test('should maintain separate caches for authenticated and unauthenticated requests', async ({ page }) => {
+    // Mock API with different responses for different authentication states
+    let requestCount = 0;
+    await page.route('https://api.github.com/search/issues**', async route => {
+      requestCount++;
+      const hasAuthHeader = route.request().headers()['authorization'] !== undefined;
+      
+      const responseData = hasAuthHeader 
+        ? [createPR({ id: 1, number: 1, title: 'Authenticated PR' })]
+        : [createPR({ id: 2, number: 2, title: 'Unauthenticated PR' })];
+      
+      await route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 42,
-            title: 'Valid PR with https URL',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: validUrl,
-            body: 'Test',
-            labels: []
-          }
-        ])
+        headers: {
+          'Content-Type': 'application/json',
+          ...createRateLimitHeaders(4999, 5000, 1)
+        },
+        body: JSON.stringify(createSearchResponse(responseData))
       });
     });
 
-    await page.fill('#repoInput', 'test/repo');
+    // First request without token - should fetch and cache
+    await submitSearch(page, { repo: 'auth-cache-test/repo' });
+    await waitForResults(page);
+    expect(requestCount).toBe(1);
+    await expect(page.locator('#prList')).toContainText('Unauthenticated PR');
+
+    // Second request without token - should use cache (no new API call)
     await page.click('#searchButton');
+    await waitForResults(page);
+    expect(requestCount).toBe(1); // Still 1, cache was used
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Cached');
+    await expect(page.locator('#prList')).toContainText('Unauthenticated PR');
 
-    // Wait for results
-    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+    // Third request WITH token - should fetch new data (different cache key)
+    await submitSearch(page, { repo: 'auth-cache-test/repo', token: 'ghp_test123' });
+    await waitForResults(page);
+    expect(requestCount).toBe(2); // New API call made
+    await expect(page.locator('#prList')).toContainText('Authenticated PR');
 
-    // Get the link element and verify its href is the valid URL
-    const prLink = page.locator('#prList a[target="_blank"]').first();
-    const href = await prLink.getAttribute('href');
-    expect(href).toBe(validUrl);
+    // Fourth request WITH same token - should use auth cache
+    await page.click('#searchButton');
+    await waitForResults(page);
+    expect(requestCount).toBe(2); // Still 2, auth cache was used
+    await expect(rateLimitInfo).toContainText('Cached');
+    await expect(page.locator('#prList')).toContainText('Authenticated PR');
+
+    // Fifth request without token again - should use unauthenticated cache
+    await page.fill('#tokenInput', ''); // Clear token
+    await page.click('#searchButton');
+    await waitForResults(page);
+    expect(requestCount).toBe(2); // Still 2, unauthenticated cache was used
+    await expect(rateLimitInfo).toContainText('Cached');
+    await expect(page.locator('#prList')).toContainText('Unauthenticated PR');
+  });
+
+  test('should update chart theme when toggling dark mode', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [createPR({ state: 'closed', merged_at: getDaysAgoISO(5) })] });
+
+    // First, create a chart
+    await submitSearch(page);
+    await waitForChart(page);
+
+    const canvas = page.locator('#prChart canvas');
+
+    // Toggle dark mode
+    await page.locator('#themeToggle').click();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    await expect(canvas).toBeVisible();
+
+    // Toggle back to light mode
+    await page.locator('#themeToggle').click();
+    await expect(page.locator('html')).not.toHaveClass(/dark/);
+    await expect(canvas).toBeVisible();
+  });
+
+  test('should show error when total_count exceeds 1000 results', async ({ page }) => {
+    // Mock multiple pages of results with total_count > 1000
+    await page.route('https://api.github.com/search/issues**', async route => {
+      const url = new URL(route.request().url());
+      const currentPage = parseInt(url.searchParams.get('page') || '1');
+      
+      // Create 100 PRs for each page up to page 10
+      const prs = Array.from({ length: 100 }, (_, i) => createPR({
+        id: (currentPage - 1) * 100 + i + 1,
+        number: (currentPage - 1) * 100 + i + 1,
+        title: `PR ${(currentPage - 1) * 100 + i + 1}`,
+        state: 'closed',
+        merged_at: getDaysAgoISO(5)
+      }));
+      
+      await route.fulfill({
+        status: 200,
+        headers: { ...createRateLimitHeaders() },
+        body: JSON.stringify({
+          total_count: 1500, // Exceeds 1000 limit
+          incomplete_results: false,
+          items: prs.map(pr => ({
+            id: pr.id,
+            node_id: `PR_${pr.id}`,
+            number: pr.number,
+            title: pr.title,
+            state: pr.state,
+            created_at: pr.created_at,
+            user: { login: 'copilot' },
+            html_url: pr.html_url,
+            pull_request: { merged_at: pr.merged_at }
+          }))
+        })
+      });
+    });
+
+    await submitSearch(page);
+    await waitForError(page);
+
+    const errorMessage = page.locator('#errorMessage');
+    await expect(errorMessage).toContainText(/Results truncated.*1500.*PRs/i);
+    await expect(errorMessage).toContainText(/only the first 1000 could be fetched/i);
+    await expect(errorMessage).toContainText(/narrow your date range/i);
+  });
+
+  test('should show error when incomplete_results flag is true', async ({ page }) => {
+    // Mock API response with incomplete_results: true
+    const prs = createPRs([
+      { title: 'PR 1', state: 'closed', merged_at: getDaysAgoISO(5) },
+      { title: 'PR 2', state: 'open' }
+    ]);
+    
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: { ...createRateLimitHeaders() },
+        body: JSON.stringify({
+          total_count: prs.length,
+          incomplete_results: true, // GitHub API indicates incomplete results
+          items: prs.map(pr => ({
+            id: pr.id,
+            node_id: `PR_${pr.id}`,
+            number: pr.number,
+            title: pr.title,
+            state: pr.state,
+            created_at: pr.created_at,
+            user: { login: 'copilot' },
+            html_url: pr.html_url,
+            pull_request: { merged_at: pr.merged_at }
+          }))
+        })
+      });
+    });
+
+    await submitSearch(page);
+    await waitForError(page);
+
+    const errorMessage = page.locator('#errorMessage');
+    await expect(errorMessage).toContainText(/Search results may be incomplete/i);
+    await expect(errorMessage).toContainText(/GitHub API limitations.*timeouts/i);
+    await expect(errorMessage).toContainText(/try again.*narrow your date range/i);
   });
 
 });

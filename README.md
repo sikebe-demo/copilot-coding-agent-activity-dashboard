@@ -15,6 +15,8 @@ A modern, self-contained web application for analyzing and visualizing Pull Requ
 - 🌓 **Dark Mode**: Seamless light/dark theme switching with localStorage persistence
 - 📱 **Responsive Design**: Fully responsive for mobile, tablet, and desktop
 - ✨ **Modern UI**: Glassmorphism design with gradient backgrounds and smooth animations
+- 💾 **Smart Caching**: 5-minute cache for API responses to reduce redundant requests
+- 📊 **Rate Limit Display**: Real-time visualization of GitHub Search API rate limit status
 
 ## 🛠️ Technology Stack
 
@@ -24,14 +26,14 @@ A modern, self-contained web application for analyzing and visualizing Pull Requ
 | **Tailwind CSS** | Utility-first CSS framework (npm) | 3.4.0 |
 | **Chart.js** | Data visualization library (npm) | 4.4.1 |
 | **JavaScript (ES6+)** | GitHub API integration | - |
-| **GitHub REST API** | PR data fetching | v3 |
+| **GitHub Search API** | PR data fetching with efficient filtering | v3 |
 | **Playwright** | E2E testing | 1.40.0 |
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 22+ 
+- Node.js 24+ 
 - npm or yarn
 
 ### Installation
@@ -246,4 +248,4 @@ Created with ❤️ by GitHub Copilot Coding Agent
 
 ---
 
-**Note**: This is a client-side application that uses the GitHub REST API directly from the browser. No backend server is required.
+**Note**: This is a client-side application that uses the GitHub Search API directly from the browser. No backend server is required. Includes smart caching (5-minute TTL) and rate limit monitoring for optimal performance.
