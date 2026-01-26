@@ -561,7 +561,7 @@ function escapeHtml(text: string | null | undefined): string {
         .replace(/'/g, '&#39;');
 }
 
-// Sanitize URL to prevent javascript: protocol XSS attacks
+// Sanitize URL to prevent XSS attacks - only allows HTTPS URLs from github.com
 function sanitizeUrl(url: string | null | undefined): string {
     if (url == null) return '#';
     try {
