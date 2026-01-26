@@ -769,7 +769,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(errorMessage).toContainText(/Reset at|different token/i);
   });
 
-  test('should show permission error for 403 when X-RateLimit-Remaining is not 0', async ({ page }) => {
+  test('should show validation error for 422', async ({ page }) => {
     await mockSearchAPI(page, {
       status: 422,
       headers: createRateLimitHeaders(4500),
@@ -780,6 +780,19 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await waitForError(page);
 
     await expect(page.locator('#errorMessage')).toContainText(/Search query validation failed|check the repository name/i);
+  });
+
+  test('should show permission error for 403 when X-RateLimit-Remaining is not 0', async ({ page }) => {
+    await mockSearchAPI(page, {
+      status: 403,
+      headers: createRateLimitHeaders(4500),
+      body: { message: 'Forbidden' }
+    });
+
+    await submitSearch(page, { repo: 'test/private-repo' });
+    await waitForError(page);
+
+    await expect(page.locator('#errorMessage')).toContainText(/Access forbidden.*HTTP 403.*insufficient permissions|SSO|abuse protection/i);
   });
 
   test('should show fallback error when X-RateLimit-Remaining header is missing', async ({ page }) => {
