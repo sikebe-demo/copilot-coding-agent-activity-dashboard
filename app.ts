@@ -163,18 +163,28 @@ async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, to
                 // Check if it's actually a rate limit error by inspecting the header
                 const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
                 if (rateLimitRemaining === '0') {
+                    // Confirmed rate limit: header exists and is '0'
                     const resetTime = response.headers.get('X-RateLimit-Reset');
-                    const resetDate = resetTime ? new Date(parseInt(resetTime, 10) * 1000) : null;
+                    let resetDate: Date | null = null;
+                    if (resetTime) {
+                        const resetTimestamp = parseInt(resetTime, 10);
+                        if (!isNaN(resetTimestamp)) {
+                            resetDate = new Date(resetTimestamp * 1000);
+                        }
+                    }
                     const resetMessage = resetDate
-                        ? ` Rate limit resets at ${resetDate.toLocaleTimeString()}.`
+                        ? ` Rate limit resets at ${resetDate.toLocaleTimeString('ja-JP')}.`
                         : '';
                     if (token) {
                         throw new Error(`API rate limit exceeded.${resetMessage} Please wait or use a different token.`);
                     } else {
                         throw new Error(`API rate limit exceeded.${resetMessage} Please use a GitHub Personal Access Token (PAT) for higher limits.`);
                     }
+                } else if (rateLimitRemaining === null) {
+                    // Header missing - could be rate limit or permission error, fall back to generic message
+                    throw new Error('Access forbidden. This may be due to rate limiting or insufficient permissions. Please try using a GitHub Personal Access Token (PAT) with repo scope.');
                 } else {
-                    // 403 but not rate limited - likely a permission issue
+                    // 403 but not rate limited (header exists and is not '0') - likely a permission issue
                     throw new Error('Access forbidden. Please check that your token has the required permissions (repo scope) or that the repository is accessible.');
                 }
             } else if (response.status === 401) {

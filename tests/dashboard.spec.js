@@ -890,8 +890,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     expect(titleText?.trim()).toBe('');
   });
 
-  test('should show rate limit error with reset time when X-RateLimit-Remaining is 0', async ({ page }) => {
-    // Mock GitHub API with rate limit error
+  test('should show rate limit error with reset time when X-RateLimit-Remaining is 0 (unauthenticated)', async ({ page }) => {
+    // Mock GitHub API with rate limit error - unauthenticated scenario
     const resetTimestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
     await page.route('https://api.github.com/**', route => {
       route.fulfill({
@@ -907,17 +907,50 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
       });
     });
 
-    // Fill form and submit
+    // Fill form and submit without token
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
 
     // Wait for error
     await page.waitForSelector('#error', { state: 'visible' });
 
-    // Check error message contains rate limit info
+    // Check error message contains rate limit info and reset time
     const errorMessage = page.locator('#errorMessage');
     await expect(errorMessage).toContainText(/rate limit exceeded/i);
+    await expect(errorMessage).toContainText(/resets at/i);
     await expect(errorMessage).toContainText(/Personal Access Token|PAT/i);
+  });
+
+  test('should show rate limit error when X-RateLimit-Remaining is 0 (authenticated)', async ({ page }) => {
+    // Mock GitHub API with rate limit error - authenticated scenario
+    const resetTimestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(resetTimestamp),
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': 'X-RateLimit-Remaining, X-RateLimit-Reset'
+        },
+        body: JSON.stringify({ message: 'API rate limit exceeded' })
+      });
+    });
+
+    // Fill form and submit with token
+    await page.fill('#repoInput', 'test/repo');
+    await page.fill('#tokenInput', 'ghp_validtoken123');
+    await page.click('#searchButton');
+
+    // Wait for error
+    await page.waitForSelector('#error', { state: 'visible' });
+
+    // Check error message contains rate limit info for authenticated user
+    const errorMessage = page.locator('#errorMessage');
+    await expect(errorMessage).toContainText(/rate limit exceeded/i);
+    await expect(errorMessage).toContainText(/resets at/i);
+    await expect(errorMessage).toContainText(/wait|different token/i);
   });
 
   test('should show permission error for 403 when X-RateLimit-Remaining is not 0', async ({ page }) => {
@@ -946,6 +979,31 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Check error message shows permission error
     const errorMessage = page.locator('#errorMessage');
     await expect(errorMessage).toContainText(/Access forbidden|permission/i);
+  });
+
+  test('should show fallback error when X-RateLimit-Remaining header is missing', async ({ page }) => {
+    // Mock GitHub API with 403 but without rate limit headers
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ message: 'Forbidden' })
+      });
+    });
+
+    // Fill form and submit
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for error
+    await page.waitForSelector('#error', { state: 'visible' });
+
+    // Check error message shows fallback error mentioning both possibilities
+    const errorMessage = page.locator('#errorMessage');
+    await expect(errorMessage).toContainText(/Access forbidden/i);
+    await expect(errorMessage).toContainText(/rate limiting|permissions/i);
   });
 
   test('should show authentication error for 401', async ({ page }) => {
