@@ -9,7 +9,7 @@
 </head>
 <body class="antialiased bg-pattern">
     <!-- Background Gradient Overlay -->
-    <div class="fixed inset-0 -z-10 bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5"></div>
+    <div class="fixed inset-0 -z-10 bg-linear-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5"></div>
 
     <!-- Header -->
     <header class="sticky top-0 z-50 glass-card border-b border-white/10">
@@ -17,7 +17,7 @@
             <div class="flex items-center justify-between h-16">
                 <!-- Logo & Title -->
                 <div class="flex items-center space-x-3">
-                    <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 shadow-lg">
+                    <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-indigo-600 to-purple-600 shadow-lg">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <rect x="3" y="11" width="18" height="10" rx="2"></rect>
                             <circle cx="12" cy="5" r="2"></circle>
@@ -52,7 +52,7 @@
         <!-- Search Form -->
         <div class="glass-card rounded-2xl p-6 mb-8">
             <div class="flex items-center space-x-3 mb-6">
-                <div class="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500">
+                <div class="p-2 rounded-lg bg-linear-to-br from-indigo-500 to-purple-500">
                     <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8"></circle>
                         <path d="m21 21-4.35-4.35"></path>
@@ -139,7 +139,7 @@
                 <button
                     type="submit"
                     id="searchButton"
-                    class="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg flex items-center justify-center space-x-2"
+                    class="w-full px-6 py-4 rounded-xl bg-linear-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg flex items-center justify-center space-x-2"
                 >
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8"></circle>
@@ -163,18 +163,18 @@
 
         <!-- Error State -->
         <div id="error" class="hidden">
-            <div class="glass-card rounded-2xl p-8 border-2 border-red-500/20 bg-red-50/50 dark:bg-red-950/20">
+            <div class="glass-card rounded-2xl p-8 border-2 border-red-500/20 bg-red-50/50 dark:bg-red-950/50 dark:border-red-500/40">
                 <div class="flex items-start space-x-4">
-                    <div class="flex-shrink-0">
-                        <svg class="w-8 h-8 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <div class="shrink-0">
+                        <svg class="w-8 h-8 text-red-600 dark:text-red-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <circle cx="12" cy="12" r="10"></circle>
                             <line x1="12" y1="8" x2="12" y2="12"></line>
                             <line x1="12" y1="16" x2="12.01" y2="16"></line>
                         </svg>
                     </div>
                     <div class="flex-1">
-                        <h3 class="text-lg font-semibold text-red-800 dark:text-red-300 mb-2">An error occurred</h3>
-                        <p id="errorMessage" class="text-red-700 dark:text-red-400"></p>
+                        <h3 class="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">An error occurred</h3>
+                        <p id="errorMessage" class="text-red-700 dark:text-red-300"></p>
                     </div>
                 </div>
             </div>
@@ -186,10 +186,10 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <!-- Total PRs -->
                 <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full -translate-y-16 translate-x-16"></div>
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-indigo-500/10 to-purple-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
-                            <div class="p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 shadow-lg">
+                            <div class="p-3 rounded-xl bg-linear-to-br from-indigo-500 to-purple-500 shadow-lg">
                                 <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                     <circle cx="18" cy="18" r="3"></circle>
                                     <circle cx="6" cy="6" r="3"></circle>
@@ -208,10 +208,10 @@
 
                 <!-- Merged PRs -->
                 <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-full -translate-y-16 translate-x-16"></div>
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-green-500/10 to-emerald-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
-                            <div class="p-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 shadow-lg">
+                            <div class="p-3 rounded-xl bg-linear-to-br from-green-500 to-emerald-500 shadow-lg">
                                 <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                                     <polyline points="22 4 12 14.01 9 11.01"></polyline>
@@ -226,10 +226,10 @@
 
                 <!-- Closed PRs -->
                 <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-500/10 to-rose-500/10 rounded-full -translate-y-16 translate-x-16"></div>
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-red-500/10 to-rose-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
-                            <div class="p-3 rounded-xl bg-gradient-to-br from-red-500 to-rose-500 shadow-lg">
+                            <div class="p-3 rounded-xl bg-linear-to-br from-red-500 to-rose-500 shadow-lg">
                                 <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                     <circle cx="12" cy="12" r="10"></circle>
                                     <line x1="15" y1="9" x2="9" y2="15"></line>
@@ -245,10 +245,10 @@
 
                 <!-- Open PRs -->
                 <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-full -translate-y-16 translate-x-16"></div>
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-blue-500/10 to-cyan-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
-                            <div class="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg">
+                            <div class="p-3 rounded-xl bg-linear-to-br from-blue-500 to-cyan-500 shadow-lg">
                                 <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                     <circle cx="12" cy="12" r="10"></circle>
                                     <polyline points="8 12 12 16 16 12"></polyline>
@@ -267,7 +267,7 @@
             <div class="glass-card rounded-2xl p-6">
                 <div class="flex items-center justify-between mb-6">
                     <div class="flex items-center space-x-3">
-                        <div class="p-2 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500">
+                        <div class="p-2 rounded-lg bg-linear-to-br from-green-500 to-emerald-500">
                             <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <line x1="12" y1="20" x2="12" y2="10"></line>
                                 <line x1="18" y1="20" x2="18" y2="4"></line>
@@ -280,7 +280,7 @@
                 </div>
                 <div class="space-y-3">
                     <div class="relative h-12 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div id="mergeRateBar" class="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center text-white font-bold" style="width: 0%">
+                        <div id="mergeRateBar" class="h-full bg-linear-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center text-white font-bold" style="width: 0%">
                             <span id="mergeRateText" class="relative z-10">0%</span>
                         </div>
                     </div>
@@ -297,7 +297,7 @@
             <!-- Chart -->
             <div class="glass-card rounded-2xl p-6">
                 <div class="flex items-center space-x-3 mb-6">
-                    <div class="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500">
+                    <div class="p-2 rounded-lg bg-linear-to-br from-indigo-500 to-purple-500">
                         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <line x1="18" y1="20" x2="18" y2="10"></line>
                             <line x1="12" y1="20" x2="12" y2="4"></line>
@@ -306,13 +306,13 @@
                     </div>
                     <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Daily PR Trend</h2>
                 </div>
-                <div id="prChart" class="h-[400px] w-full"></div>
+                <div id="prChart" class="h-100 w-full"></div>
             </div>
 
             <!-- PR List -->
             <div class="glass-card rounded-2xl p-6">
                 <div class="flex items-center space-x-3 mb-6">
-                    <div class="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500">
+                    <div class="p-2 rounded-lg bg-linear-to-br from-indigo-500 to-purple-500">
                         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <line x1="8" y1="6" x2="21" y2="6"></line>
                             <line x1="8" y1="12" x2="21" y2="12"></line>
@@ -342,7 +342,7 @@
                     <span class="font-semibold">Copilot Coding Agent PR Dashboard</span>
                 </div>
                 <p class="text-sm text-slate-600 dark:text-slate-200">
-                    Powered by <a href="https://github.com" target="_blank" rel="noopener" class="text-indigo-600 dark:text-indigo-300 hover:underline">GitHub API</a>
+                    Powered by <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-300 hover:underline">GitHub API</a>
                 </p>
             </div>
         </div>

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Enable dark mode via .dark class on parent element (required for Tailwind CSS v4) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Custom Styles */
 @layer base {
   body {
