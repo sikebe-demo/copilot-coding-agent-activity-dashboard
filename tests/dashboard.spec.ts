@@ -51,7 +51,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Verify date range is approximately 30 days
     const from = new Date(fromValue);
     const to = new Date(toValue);
-    const daysDiff = Math.round((to - from) / (1000 * 60 * 60 * 24));
+    const daysDiff = Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
 
     expect(daysDiff).toBeGreaterThanOrEqual(29);
     expect(daysDiff).toBeLessThanOrEqual(31);
@@ -353,7 +353,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(page.locator('#toDate')).toHaveAttribute('required', '');
   });
 
-  test('should open PR links in new tab', async ({ page, context }) => {
+  test('should open PR links in new tab', async ({ page }) => {
     // Mock GitHub API with current date
     const now = new Date();
     const fiveDaysAgo = new Date(now);

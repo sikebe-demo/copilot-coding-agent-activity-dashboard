@@ -1,6 +1,36 @@
 // Import Chart.js from npm
 import Chart from 'chart.js/auto';
 
+// Type definitions
+interface GitHubUser {
+    login: string;
+}
+
+interface PullRequest {
+    id: number;
+    number: number;
+    title: string;
+    state: string;
+    merged_at: string | null;
+    created_at: string;
+    user: GitHubUser;
+    html_url: string;
+}
+
+interface PRsByDate {
+    [date: string]: {
+        merged: number;
+        closed: number;
+        open: number;
+    };
+}
+
+interface StatusConfig {
+    class: string;
+    icon: string;
+    text: string;
+}
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
@@ -9,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Theme Management
-function initializeTheme() {
+function initializeTheme(): void {
     const themeToggle = document.getElementById('themeToggle');
     const savedTheme = localStorage.getItem('theme') || 'light';
 
@@ -21,7 +51,7 @@ function initializeTheme() {
     themeToggle?.addEventListener('click', toggleTheme);
 }
 
-function toggleTheme() {
+function toggleTheme(): void {
     const html = document.documentElement;
     const isDark = html.classList.contains('dark');
 
@@ -42,31 +72,31 @@ function toggleTheme() {
 }
 
 // Set default dates (last 30 days)
-function setDefaultDates() {
+function setDefaultDates(): void {
     const toDate = new Date();
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - 30);
 
-    const toInput = document.getElementById('toDate');
-    const fromInput = document.getElementById('fromDate');
+    const toInput = document.getElementById('toDate') as HTMLInputElement | null;
+    const fromInput = document.getElementById('fromDate') as HTMLInputElement | null;
 
     if (toInput) toInput.valueAsDate = toDate;
     if (fromInput) fromInput.valueAsDate = fromDate;
 }
 
 // Form initialization
-function initializeForm() {
+function initializeForm(): void {
     const form = document.getElementById('searchForm');
     form?.addEventListener('submit', handleFormSubmit);
 }
 
-async function handleFormSubmit(e) {
+async function handleFormSubmit(e: Event): Promise<void> {
     e.preventDefault();
 
-    const repoInput = document.getElementById('repoInput').value.trim();
-    const fromDate = document.getElementById('fromDate').value;
-    const toDate = document.getElementById('toDate').value;
-    const token = document.getElementById('tokenInput').value.trim();
+    const repoInput = (document.getElementById('repoInput') as HTMLInputElement).value.trim();
+    const fromDate = (document.getElementById('fromDate') as HTMLInputElement).value;
+    const toDate = (document.getElementById('toDate') as HTMLInputElement).value;
+    const token = (document.getElementById('tokenInput') as HTMLInputElement).value.trim();
 
     if (!repoInput.includes('/')) {
         showError('Please enter repository in "owner/repo" format');
@@ -83,15 +113,15 @@ async function handleFormSubmit(e) {
         const prs = await fetchCopilotPRs(owner, repo, fromDate, toDate, token);
         displayResults(prs, owner, repo);
     } catch (error) {
-        showError(error.message);
+        showError((error as Error).message);
     } finally {
         hideLoading();
     }
 }
 
 // GitHub API Functions
-async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
-    const headers = {
+async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, toDate: string, token: string): Promise<PullRequest[]> {
+    const headers: HeadersInit = {
         'Accept': 'application/vnd.github.v3+json'
     };
 
@@ -99,7 +129,7 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const allPRs = [];
+    const allPRs: PullRequest[] = [];
     let page = 1;
     const perPage = 100;
 
@@ -118,7 +148,7 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
             }
         }
 
-        const prs = await response.json();
+        const prs: PullRequest[] = await response.json();
 
         if (prs.length === 0) break;
 
@@ -151,7 +181,7 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
     return copilotPRs;
 }
 
-function isCopilotPR(pr) {
+function isCopilotPR(pr: PullRequest): boolean {
     // Detect PRs created by Copilot Coding Agent
     // Primary check: PR must be authored by the GitHub user with login "copilot"
     // The comparison is case-insensitive and ensures we only detect PRs actually created by Copilot, not just assigned to it
@@ -159,7 +189,7 @@ function isCopilotPR(pr) {
 }
 
 // Display Functions
-function displayResults(prs, owner, repo) {
+function displayResults(prs: PullRequest[], _owner: string, _repo: string): void {
     const merged = prs.filter(pr => pr.merged_at !== null);
     const closed = prs.filter(pr => pr.state === 'closed' && pr.merged_at === null);
     const open = prs.filter(pr => pr.state === 'open');
@@ -169,15 +199,24 @@ function displayResults(prs, owner, repo) {
         : 0;
 
     // Update summary cards
-    document.getElementById('totalPRs').textContent = prs.length;
-    document.getElementById('mergedPRs').textContent = merged.length;
-    document.getElementById('closedPRs').textContent = closed.length;
-    document.getElementById('openPRs').textContent = open.length;
+    const totalPRsEl = document.getElementById('totalPRs');
+    const mergedPRsEl = document.getElementById('mergedPRs');
+    const closedPRsEl = document.getElementById('closedPRs');
+    const openPRsEl = document.getElementById('openPRs');
+
+    if (totalPRsEl) totalPRsEl.textContent = String(prs.length);
+    if (mergedPRsEl) mergedPRsEl.textContent = String(merged.length);
+    if (closedPRsEl) closedPRsEl.textContent = String(closed.length);
+    if (openPRsEl) openPRsEl.textContent = String(open.length);
 
     // Update merge rate
-    document.getElementById('mergeRateValue').textContent = `${mergeRate}%`;
-    document.getElementById('mergeRateText').textContent = `${mergeRate}%`;
-    document.getElementById('mergeRateBar').style.width = `${mergeRate}%`;
+    const mergeRateValueEl = document.getElementById('mergeRateValue');
+    const mergeRateTextEl = document.getElementById('mergeRateText');
+    const mergeRateBarEl = document.getElementById('mergeRateBar');
+
+    if (mergeRateValueEl) mergeRateValueEl.textContent = `${mergeRate}%`;
+    if (mergeRateTextEl) mergeRateTextEl.textContent = `${mergeRate}%`;
+    if (mergeRateBarEl) mergeRateBarEl.style.width = `${mergeRate}%`;
 
     // Display chart
     displayChart(prs);
@@ -188,11 +227,11 @@ function displayResults(prs, owner, repo) {
     showResults();
 }
 
-let chartInstance = null;
+let chartInstance: Chart | null = null;
 
-function displayChart(prs) {
+function displayChart(prs: PullRequest[]): void {
     // Group PRs by date
-    const prsByDate = {};
+    const prsByDate: PRsByDate = {};
 
     prs.forEach(pr => {
         const date = new Date(pr.created_at).toISOString().split('T')[0];
@@ -302,8 +341,7 @@ function displayChart(prs) {
                         }
                     },
                     grid: {
-                        color: gridColor,
-                        drawBorder: false
+                        color: gridColor
                     }
                 },
                 y: {
@@ -316,8 +354,7 @@ function displayChart(prs) {
                         }
                     },
                     grid: {
-                        color: gridColor,
-                        drawBorder: false
+                        color: gridColor
                     }
                 }
             },
@@ -329,27 +366,43 @@ function displayChart(prs) {
     });
 }
 
-function updateChartTheme() {
+function updateChartTheme(): void {
     if (!chartInstance) return;
 
     const isDark = document.documentElement.classList.contains('dark');
     const textColor = isDark ? '#e2e8f0' : '#1e293b';
     const gridColor = isDark ? '#334155' : '#e2e8f0';
 
-    chartInstance.options.plugins.legend.labels.color = textColor;
-    chartInstance.options.plugins.tooltip.backgroundColor = isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)';
-    chartInstance.options.plugins.tooltip.titleColor = textColor;
-    chartInstance.options.plugins.tooltip.bodyColor = textColor;
-    chartInstance.options.plugins.tooltip.borderColor = isDark ? '#334155' : '#e2e8f0';
-    chartInstance.options.scales.x.ticks.color = textColor;
-    chartInstance.options.scales.x.grid.color = gridColor;
-    chartInstance.options.scales.y.ticks.color = textColor;
-    chartInstance.options.scales.y.grid.color = gridColor;
+    if (chartInstance.options.plugins?.legend?.labels) {
+        chartInstance.options.plugins.legend.labels.color = textColor;
+    }
+    if (chartInstance.options.plugins?.tooltip) {
+        chartInstance.options.plugins.tooltip.backgroundColor = isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)';
+        chartInstance.options.plugins.tooltip.titleColor = textColor;
+        chartInstance.options.plugins.tooltip.bodyColor = textColor;
+        chartInstance.options.plugins.tooltip.borderColor = isDark ? '#334155' : '#e2e8f0';
+    }
+    if (chartInstance.options.scales?.x) {
+        if (chartInstance.options.scales.x.ticks) {
+            chartInstance.options.scales.x.ticks.color = textColor;
+        }
+        if (chartInstance.options.scales.x.grid) {
+            chartInstance.options.scales.x.grid.color = gridColor;
+        }
+    }
+    if (chartInstance.options.scales?.y) {
+        if (chartInstance.options.scales.y.ticks) {
+            chartInstance.options.scales.y.ticks.color = textColor;
+        }
+        if (chartInstance.options.scales.y.grid) {
+            chartInstance.options.scales.y.grid.color = gridColor;
+        }
+    }
 
     chartInstance.update();
 }
 
-function displayPRList(prs) {
+function displayPRList(prs: PullRequest[]): void {
     const prList = document.getElementById('prList');
     if (!prList) return;
 
@@ -371,13 +424,13 @@ function displayPRList(prs) {
 
     // Sort PRs by created date (newest first)
     const sortedPRs = [...prs].sort((a, b) =>
-        new Date(b.created_at) - new Date(a.created_at)
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
-    sortedPRs.forEach((pr, index) => {
+    sortedPRs.forEach((pr) => {
         const createdDate = new Date(pr.created_at).toLocaleDateString('ja-JP');
         const status = pr.merged_at ? 'merged' : pr.state;
-        const statusConfig = {
+        const statusConfig: Record<string, StatusConfig> = {
             merged: {
                 class: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
                 icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
@@ -442,26 +495,26 @@ function displayPRList(prs) {
     });
 }
 
-function escapeHtml(text) {
+function escapeHtml(text: string): string {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
 // UI State Management
-function showLoading() {
+function showLoading(): void {
     const loading = document.getElementById('loading');
     if (loading) {
         loading.classList.remove('hidden');
     }
 }
 
-function hideLoading() {
+function hideLoading(): void {
     const loading = document.getElementById('loading');
     if (loading) loading.classList.add('hidden');
 }
 
-function showError(message) {
+function showError(message: string): void {
     const errorEl = document.getElementById('error');
     const errorMessage = document.getElementById('errorMessage');
     if (errorEl && errorMessage) {
@@ -470,19 +523,19 @@ function showError(message) {
     }
 }
 
-function hideError() {
+function hideError(): void {
     const errorEl = document.getElementById('error');
     if (errorEl) errorEl.classList.add('hidden');
 }
 
-function showResults() {
+function showResults(): void {
     const results = document.getElementById('results');
     if (results) {
         results.classList.remove('hidden');
     }
 }
 
-function hideResults() {
+function hideResults(): void {
     const results = document.getElementById('results');
     if (results) results.classList.add('hidden');
 }
