@@ -1047,9 +1047,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
   test('should show error when total_count exceeds 1000 results', async ({ page }) => {
     // Mock multiple pages of results with total_count > 1000
-    let pageCount = 0;
     await page.route('https://api.github.com/search/issues**', async route => {
-      pageCount++;
       const url = new URL(route.request().url());
       const currentPage = parseInt(url.searchParams.get('page') || '1');
       
@@ -1068,7 +1066,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         body: JSON.stringify({
           total_count: 1500, // Exceeds 1000 limit
           incomplete_results: false,
-          items: prs.map((pr, index) => ({
+          items: prs.map(pr => ({
             id: pr.id,
             node_id: `PR_${pr.id}`,
             number: pr.number,
@@ -1106,7 +1104,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         body: JSON.stringify({
           total_count: prs.length,
           incomplete_results: true, // GitHub API indicates incomplete results
-          items: prs.map((pr, index) => ({
+          items: prs.map(pr => ({
             id: pr.id,
             node_id: `PR_${pr.id}`,
             number: pr.number,
