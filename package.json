@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0",
+    "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^25.0.10",
     "autoprefixer": "^10.4.16",
     "http-server": "^14.1.1",
