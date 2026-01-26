@@ -153,8 +153,8 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
 
 function isCopilotPR(pr) {
     // Detect PRs created by Copilot Coding Agent
-    // Primary check: PR must be authored by the "Copilot" user
-    // This ensures we only detect PRs actually created by Copilot, not just assigned to it
+    // Primary check: PR must be authored by the GitHub user with login "copilot"
+    // The comparison is case-insensitive and ensures we only detect PRs actually created by Copilot, not just assigned to it
     return pr.user?.login?.toLowerCase() === 'copilot';
 }
 
