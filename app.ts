@@ -482,8 +482,9 @@ function displayPRList(prs: PullRequest[]): void {
 
         const config = statusConfig[status];
 
-        // Sanitize PR number to ensure it's a valid integer
-        const safeNumber = Number.isInteger(pr.number) ? pr.number : 0;
+        // Sanitize PR number to ensure it's a valid positive integer
+        const numericValue = Number(pr.number);
+        const safeNumber = Number.isInteger(numericValue) && numericValue > 0 ? numericValue : 0;
 
         const prElement = document.createElement('div');
         prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
@@ -543,10 +544,14 @@ function escapeHtml(text: string | null | undefined): string {
 // Sanitize URL to prevent javascript: protocol XSS attacks
 function sanitizeUrl(url: string | null | undefined): string {
     if (url == null) return '#';
-    const trimmed = String(url).trim();
-    // Only allow http: and https: protocols
-    if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
-        return escapeHtml(trimmed);
+    try {
+        const parsedUrl = new URL(String(url).trim());
+        // Only allow http and https protocols using URL constructor validation
+        if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
+            return escapeHtml(parsedUrl.href);
+        }
+    } catch {
+        // Invalid URL
     }
     return '#';
 }
