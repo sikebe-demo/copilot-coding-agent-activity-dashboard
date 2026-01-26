@@ -437,8 +437,8 @@ async function fetchCopilotPRsWithSearchAPI(
             // If total_count exceeds 1000, warn the user about incomplete results
             if (totalCount > 1000) {
                 throw new Error(
-                    `Results truncated: Found ${totalCount} PRs but can only retrieve 1000 due to GitHub Search API limitations. ` +
-                    `Please narrow your date range to see complete results.`
+                    `Results truncated: Found ${totalCount} PRs, but only the first 1000 could be fetched due to GitHub Search API limitations. ` +
+                    `Up to 1000 PRs were retrieved but are not returned here because the result set is incomplete. Please narrow your date range to see complete results.`
                 );
             }
             break;
