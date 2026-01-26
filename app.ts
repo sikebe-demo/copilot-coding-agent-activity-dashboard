@@ -482,9 +482,9 @@ function displayPRList(prs: PullRequest[]): void {
 
         const config = statusConfig[status];
 
-        // Sanitize PR number to ensure it's a valid positive integer
-        const numericValue = Number(pr.number);
-        const safeNumber = Number.isInteger(numericValue) && numericValue > 0 ? numericValue : 0;
+        // Validate PR number - use Number.isSafeInteger since pr.number is typed as number
+        // Display empty string for invalid numbers to avoid showing misleading "#0"
+        const prNumberDisplay = Number.isSafeInteger(pr.number) && pr.number > 0 ? `#${pr.number}` : '';
 
         const prElement = document.createElement('div');
         prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
@@ -495,7 +495,7 @@ function displayPRList(prs: PullRequest[]): void {
                         ${config.icon}
                         ${config.text}
                     </span>
-                    <span class="text-xs text-slate-600 dark:text-slate-300">#${safeNumber}</span>
+                    ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-300">${prNumberDisplay}</span>` : ''}
                 </div>
                 <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
                    class="flex-shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
