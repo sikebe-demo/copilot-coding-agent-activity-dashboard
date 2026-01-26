@@ -546,9 +546,9 @@ function sanitizeUrl(url: string | null | undefined): string {
     if (url == null) return '#';
     try {
         const parsedUrl = new URL(String(url).trim());
-        // Only allow http and https protocols using URL constructor validation
+        // Only allow HTTPS GitHub URLs using URL constructor validation
         // The URL constructor normalizes and encodes the URL, so no additional escaping needed
-        if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
+        if (parsedUrl.protocol === 'https:' && parsedUrl.hostname === 'github.com') {
             return parsedUrl.href;
         }
     } catch {
