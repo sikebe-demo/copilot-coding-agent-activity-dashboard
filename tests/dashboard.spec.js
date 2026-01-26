@@ -8,7 +8,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   test('should display the main page with correct title', async ({ page }) => {
     // Check page title
     await expect(page).toHaveTitle(/Copilot PR.*Dashboard/);
-    
+
     // Check main heading
     const heading = page.locator('h1');
     await expect(heading).toContainText('Copilot PR Dashboard');
@@ -19,18 +19,18 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const repoInput = page.locator('#repoInput');
     await expect(repoInput).toBeVisible();
     await expect(repoInput).toHaveAttribute('placeholder', /microsoft\/vscode|owner\/repo/);
-    
+
     // Check date inputs
     const fromDate = page.locator('#fromDate');
     const toDate = page.locator('#toDate');
     await expect(fromDate).toBeVisible();
     await expect(toDate).toBeVisible();
-    
+
     // Check token input
     const tokenInput = page.locator('#tokenInput');
     await expect(tokenInput).toBeVisible();
     await expect(tokenInput).toHaveAttribute('type', 'password');
-    
+
     // Check submit button
     const submitButton = page.locator('#searchButton');
     await expect(submitButton).toBeVisible();
@@ -40,19 +40,19 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   test('should set default dates (last 30 days)', async ({ page }) => {
     const fromDate = page.locator('#fromDate');
     const toDate = page.locator('#toDate');
-    
+
     // Verify dates are set
     const fromValue = await fromDate.inputValue();
     const toValue = await toDate.inputValue();
-    
+
     expect(fromValue).toBeTruthy();
     expect(toValue).toBeTruthy();
-    
+
     // Verify date range is approximately 30 days
     const from = new Date(fromValue);
     const to = new Date(toValue);
     const daysDiff = Math.round((to - from) / (1000 * 60 * 60 * 24));
-    
+
     expect(daysDiff).toBeGreaterThanOrEqual(29);
     expect(daysDiff).toBeLessThanOrEqual(31);
   });
@@ -61,7 +61,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Fill form with invalid repo format
     await page.fill('#repoInput', 'invalid-repo');
     await page.click('#searchButton');
-    
+
     // Check error message
     const error = page.locator('#error');
     await expect(error).toBeVisible();
@@ -71,14 +71,14 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   test('should toggle dark mode', async ({ page }) => {
     const html = page.locator('html');
     const themeToggle = page.locator('#themeToggle');
-    
+
     // Initial state (light mode)
     await expect(html).not.toHaveClass(/dark/);
-    
+
     // Toggle to dark mode
     await themeToggle.click();
     await expect(html).toHaveClass(/dark/);
-    
+
     // Toggle back to light mode
     await themeToggle.click();
     await expect(html).not.toHaveClass(/dark/);
@@ -86,15 +86,15 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
   test('should persist dark mode preference', async ({ page, context }) => {
     const themeToggle = page.locator('#themeToggle');
-    
+
     // Enable dark mode
     await themeToggle.click();
     await expect(page.locator('html')).toHaveClass(/dark/);
-    
+
     // Create new page in same context
     const newPage = await context.newPage();
     await newPage.goto('/');
-    
+
     // Dark mode should be persisted
     await expect(newPage.locator('html')).toHaveClass(/dark/);
   });
@@ -102,7 +102,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   test('should have responsive design for mobile', async ({ page }) => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
-    
+
     // Check that main elements are still visible
     await expect(page.locator('h1')).toBeVisible();
     await expect(page.locator('#searchForm')).toBeVisible();
@@ -118,11 +118,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         body: JSON.stringify({ message: 'Not Found' })
       });
     });
-    
+
     // Fill form and submit
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
-    
+
     // Loading should be visible briefly
     const loading = page.locator('#loading');
     await expect(loading).toBeVisible();
@@ -136,14 +136,14 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         body: JSON.stringify({ message: 'Not Found' })
       });
     });
-    
+
     // Fill form and submit
     await page.fill('#repoInput', 'test/nonexistent');
     await page.click('#searchButton');
-    
+
     // Wait for error
     await page.waitForSelector('#error', { state: 'visible' });
-    
+
     // Check error message
     const errorMessage = page.locator('#errorMessage');
     await expect(errorMessage).toContainText(/Repository not found|error/i);
@@ -156,7 +156,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
     const threeDaysAgo = new Date(now);
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-    
+
     await page.route('https://api.github.com/**', route => {
       const prs = [
         {
@@ -184,31 +184,31 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
           labels: []
         }
       ];
-      
+
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(prs)
       });
     });
-    
+
     // Fill form with valid data
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
-    
+
     // Wait for results with longer timeout
     await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
-    
+
     // Check summary cards
     const totalPRs = page.locator('#totalPRs');
     await expect(totalPRs).toContainText('2');
-    
+
     const mergedPRs = page.locator('#mergedPRs');
     await expect(mergedPRs).toContainText('1');
-    
+
     const openPRs = page.locator('#openPRs');
     await expect(openPRs).toContainText('1');
-    
+
     // Check merge rate
     const mergeRate = page.locator('#mergeRateValue');
     await expect(mergeRate).toContainText('50%');
@@ -219,7 +219,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const now = new Date();
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-    
+
     await page.route('https://api.github.com/**', route => {
       route.fulfill({
         status: 200,
@@ -240,13 +240,13 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         ])
       });
     });
-    
+
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
-    
+
     // Wait for PR list with longer timeout
     await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
-    
+
     // Check PR details
     const prList = page.locator('#prList');
     await expect(prList).toContainText('Feature: Add new component');
@@ -260,7 +260,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const now = new Date();
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-    
+
     await page.route('https://api.github.com/**', route => {
       route.fulfill({
         status: 200,
@@ -281,13 +281,13 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         ])
       });
     });
-    
+
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
-    
+
     // Wait for chart with longer timeout
     await page.waitForSelector('#prChart', { state: 'visible', timeout: 10000 });
-    
+
     // Check that chart canvas exists
     const chart = page.locator('#prChart');
     await expect(chart).toBeVisible();
@@ -298,7 +298,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const now = new Date();
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-    
+
     await page.route('https://api.github.com/**', route => {
       route.fulfill({
         status: 200,
@@ -319,17 +319,17 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         ])
       });
     });
-    
+
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
-    
+
     // Wait for results with longer timeout
     await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
-    
+
     // Check that total is 0
     const totalPRs = page.locator('#totalPRs');
     await expect(totalPRs).toContainText('0');
-    
+
     // Check empty state message
     const prList = page.locator('#prList');
     await expect(prList).toContainText(/No PRs created by Copilot Coding Agent found/i);
@@ -341,7 +341,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(page.locator('label[for="fromDate"]')).toBeVisible();
     await expect(page.locator('label[for="toDate"]')).toBeVisible();
     await expect(page.locator('label[for="tokenInput"]')).toBeVisible();
-    
+
     // Check required fields
     await expect(page.locator('#repoInput')).toHaveAttribute('required', '');
     await expect(page.locator('#fromDate')).toHaveAttribute('required', '');
@@ -353,7 +353,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const now = new Date();
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-    
+
     await page.route('https://api.github.com/**', route => {
       route.fulfill({
         status: 200,
@@ -374,13 +374,13 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         ])
       });
     });
-    
+
     await page.fill('#repoInput', 'test/repo');
     await page.click('#searchButton');
-    
+
     // Wait for PR list with longer timeout
     await page.waitForSelector('#prList a[target="_blank"]', { state: 'visible', timeout: 10000 });
-    
+
     // Check that links have target="_blank"
     const links = page.locator('#prList a[target="_blank"]');
     await expect(links.first()).toHaveAttribute('target', '_blank');
@@ -392,16 +392,16 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     futureDate.setDate(futureDate.getDate() + 10);
     const pastDate = new Date();
     pastDate.setDate(pastDate.getDate() - 10);
-    
+
     await page.fill('#fromDate', futureDate.toISOString().split('T')[0]);
     await page.fill('#toDate', pastDate.toISOString().split('T')[0]);
     await page.fill('#repoInput', 'test/repo');
-    
+
     // HTML5 validation should prevent submission
     // Note: This test checks if dates can be set; actual validation might vary by browser
     const fromValue = await page.locator('#fromDate').inputValue();
     const toValue = await page.locator('#toDate').inputValue();
-    
+
     expect(fromValue).toBeTruthy();
     expect(toValue).toBeTruthy();
   });
