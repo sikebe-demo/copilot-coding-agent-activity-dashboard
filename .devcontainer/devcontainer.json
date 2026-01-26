@@ -12,7 +12,7 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": ". ${NVM_DIR}/nvm.sh && nvm install && npm install && npx playwright install --with-deps chromium",
+  "postCreateCommand": ". ${NVM_DIR}/nvm.sh && NODE_VERSION=$(cat .node-version) && nvm install $NODE_VERSION && nvm use $NODE_VERSION && npm install && npx playwright install --with-deps chromium",
   "customizations": {
     "vscode": {
       "extensions": [
