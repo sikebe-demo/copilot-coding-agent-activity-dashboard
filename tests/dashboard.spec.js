@@ -1058,4 +1058,87 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(canvas).toBeVisible();
   });
 
+  test('should show error when total_count exceeds 1000 results', async ({ page }) => {
+    // Mock multiple pages of results with total_count > 1000
+    await page.route('https://api.github.com/search/issues**', async route => {
+      const url = new URL(route.request().url());
+      const currentPage = parseInt(url.searchParams.get('page') || '1');
+      
+      // Create 100 PRs for each page up to page 10
+      const prs = Array.from({ length: 100 }, (_, i) => createPR({
+        id: (currentPage - 1) * 100 + i + 1,
+        number: (currentPage - 1) * 100 + i + 1,
+        title: `PR ${(currentPage - 1) * 100 + i + 1}`,
+        state: 'closed',
+        merged_at: getDaysAgoISO(5)
+      }));
+      
+      await route.fulfill({
+        status: 200,
+        headers: { ...createRateLimitHeaders() },
+        body: JSON.stringify({
+          total_count: 1500, // Exceeds 1000 limit
+          incomplete_results: false,
+          items: prs.map(pr => ({
+            id: pr.id,
+            node_id: `PR_${pr.id}`,
+            number: pr.number,
+            title: pr.title,
+            state: pr.state,
+            created_at: pr.created_at,
+            user: { login: 'copilot' },
+            html_url: pr.html_url,
+            pull_request: { merged_at: pr.merged_at }
+          }))
+        })
+      });
+    });
+
+    await submitSearch(page);
+    await waitForError(page);
+
+    const errorMessage = page.locator('#errorMessage');
+    await expect(errorMessage).toContainText(/Results truncated.*1500.*PRs/i);
+    await expect(errorMessage).toContainText(/only the first 1000 could be fetched/i);
+    await expect(errorMessage).toContainText(/narrow your date range/i);
+  });
+
+  test('should show error when incomplete_results flag is true', async ({ page }) => {
+    // Mock API response with incomplete_results: true
+    const prs = createPRs([
+      { title: 'PR 1', state: 'closed', merged_at: getDaysAgoISO(5) },
+      { title: 'PR 2', state: 'open' }
+    ]);
+    
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: { ...createRateLimitHeaders() },
+        body: JSON.stringify({
+          total_count: prs.length,
+          incomplete_results: true, // GitHub API indicates incomplete results
+          items: prs.map(pr => ({
+            id: pr.id,
+            node_id: `PR_${pr.id}`,
+            number: pr.number,
+            title: pr.title,
+            state: pr.state,
+            created_at: pr.created_at,
+            user: { login: 'copilot' },
+            html_url: pr.html_url,
+            pull_request: { merged_at: pr.merged_at }
+          }))
+        })
+      });
+    });
+
+    await submitSearch(page);
+    await waitForError(page);
+
+    const errorMessage = page.locator('#errorMessage');
+    await expect(errorMessage).toContainText(/Search results may be incomplete/i);
+    await expect(errorMessage).toContainText(/GitHub API limitations.*timeouts/i);
+    await expect(errorMessage).toContainText(/try again.*narrow your date range/i);
+  });
+
 });
