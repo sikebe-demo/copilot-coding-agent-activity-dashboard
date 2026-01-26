@@ -3,7 +3,7 @@
 # top-most EditorConfig file
 root = true
 
-# 全てのファイルに適用されるデフォルト設定
+# Default settings for all files
 [*]
 charset = utf-8
 end_of_line = lf
@@ -12,7 +12,7 @@ indent_size = 2
 trim_trailing_whitespace = true
 insert_final_newline = true
 
-# JavaScript / TypeScript (メインのソースコード)
+# JavaScript / TypeScript (main source code)
 [*.{js,ts,jsx,tsx}]
 indent_size = 4
 
@@ -32,7 +32,7 @@ indent_size = 2
 [*.md]
 trim_trailing_whitespace = false
 
-# Config files (2スペースインデント)
+# Config files (2-space indentation)
 [*.config.{js,ts,mjs}]
 indent_size = 2
 
