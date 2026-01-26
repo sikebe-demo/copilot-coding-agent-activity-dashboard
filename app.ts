@@ -129,7 +129,7 @@ async function handleFormSubmit(e: Event): Promise<void> {
 
     try {
         const prs = await fetchCopilotPRs(owner, repo, fromDate, toDate, token);
-        displayResults(prs);
+        displayResults(prs, fromDate, toDate);
     } catch (error) {
         showError(error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
@@ -207,7 +207,7 @@ function isCopilotPR(pr: PullRequest): boolean {
 }
 
 // Display Functions
-function displayResults(prs: PullRequest[]): void {
+function displayResults(prs: PullRequest[], fromDate: string, toDate: string): void {
     const merged = prs.filter(pr => pr.merged_at !== null);
     const closed = prs.filter(pr => pr.state === 'closed' && pr.merged_at === null);
     const open = prs.filter(pr => pr.state === 'open');
@@ -236,8 +236,8 @@ function displayResults(prs: PullRequest[]): void {
     if (mergeRateTextEl) mergeRateTextEl.textContent = `${mergeRate}%`;
     if (mergeRateBarEl) mergeRateBarEl.style.width = `${mergeRate}%`;
 
-    // Display chart
-    displayChart(prs);
+    // Display chart with date range passed from form submission
+    displayChart(prs, fromDate, toDate);
 
     // Display PR list
     displayPRList(prs);
@@ -245,7 +245,7 @@ function displayResults(prs: PullRequest[]): void {
     showResults();
 }
 
-function displayChart(prs: PullRequest[]): void {
+function displayChart(prs: PullRequest[], fromDate: string, toDate: string): void {
     // Group PRs by date
     const prsByDate: PRsByDate = {};
 
@@ -264,11 +264,27 @@ function displayChart(prs: PullRequest[]): void {
         }
     });
 
-    // Sort dates
-    const dates = Object.keys(prsByDate).sort();
-    const mergedData = dates.map(date => prsByDate[date].merged);
-    const closedData = dates.map(date => prsByDate[date].closed);
-    const openData = dates.map(date => prsByDate[date].open);
+    // Generate all dates in the range (including days with no data)
+    const dates: string[] = [];
+    if (fromDate && toDate) {
+        const startDate = new Date(fromDate);
+        const endDate = new Date(toDate);
+        
+        // Use a new Date object for each iteration to avoid mutation issues
+        const currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+            dates.push(currentDate.toISOString().split('T')[0]);
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    } else {
+        // Fallback: use dates from PRs if date range is not available
+        dates.push(...Object.keys(prsByDate).sort());
+    }
+    
+    // Map data for all dates (0 for dates with no PRs)
+    const mergedData = dates.map(date => prsByDate[date]?.merged ?? 0);
+    const closedData = dates.map(date => prsByDate[date]?.closed ?? 0);
+    const openData = dates.map(date => prsByDate[date]?.open ?? 0);
 
     const chartContainer = document.getElementById('prChart');
     if (!chartContainer) return;
@@ -322,7 +338,7 @@ function displayChart(prs: PullRequest[]): void {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: {
                     position: 'top',

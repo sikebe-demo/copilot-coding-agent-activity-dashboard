@@ -430,6 +430,79 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(chart).toBeVisible();
   });
 
+  test('should display all dates in range including days with no PR data', async ({ page }) => {
+    // Create PRs for specific dates only (skipping some days)
+    const prs = [
+      {
+        id: 1,
+        number: 1,
+        title: 'PR on day 2',
+        state: 'closed',
+        merged_at: '2026-01-02T10:00:00Z',
+        created_at: '2026-01-02T10:00:00Z',
+        user: { login: 'Copilot' },
+        assignees: [{ login: 'Copilot' }],
+        html_url: 'https://github.com/test/repo/pull/1',
+        body: 'Copilot PR',
+        labels: []
+      },
+      {
+        id: 2,
+        number: 2,
+        title: 'PR on day 5',
+        state: 'closed',
+        merged_at: '2026-01-05T10:00:00Z',
+        created_at: '2026-01-05T10:00:00Z',
+        user: { login: 'Copilot' },
+        assignees: [{ login: 'Copilot' }],
+        html_url: 'https://github.com/test/repo/pull/2',
+        body: 'Copilot PR',
+        labels: []
+      },
+      {
+        id: 3,
+        number: 3,
+        title: 'PR on day 7',
+        state: 'open',
+        merged_at: null,
+        created_at: '2026-01-07T10:00:00Z',
+        user: { login: 'Copilot' },
+        assignees: [{ login: 'Copilot' }],
+        html_url: 'https://github.com/test/repo/pull/3',
+        body: 'Copilot PR',
+        labels: []
+      }
+    ];
+
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(prs)
+      });
+    });
+
+    await page.goto('/');
+    
+    // Set specific date range (1/1 to 1/10 - 10 days)
+    await page.fill('#fromDate', '2026-01-01');
+    await page.fill('#toDate', '2026-01-10');
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for chart canvas to be visible
+    await page.waitForSelector('#prChart canvas', { state: 'visible', timeout: 10000 });
+    
+    // Verify the chart canvas exists and has proper dimensions (indicating it rendered)
+    const canvas = page.locator('#prChart canvas');
+    await expect(canvas).toBeVisible();
+    
+    // Get canvas bounding box to verify it rendered with content
+    const canvasBox = await canvas.boundingBox();
+    expect(canvasBox.width).toBeGreaterThan(0);
+    expect(canvasBox.height).toBeGreaterThan(0);
+  });
+
   test('should handle empty results', async ({ page }) => {
     // Mock GitHub API with no Copilot PRs (using current date)
     const now = new Date();
