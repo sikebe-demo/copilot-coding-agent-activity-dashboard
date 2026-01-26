@@ -1,6 +1,12 @@
 {
   "name": "Copilot Coding Agent Activity Dashboard",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "NODE_VERSION": "${localEnv:NODE_VERSION:22}"
+    }
+  },
+  "initializeCommand": "export NODE_VERSION=$(cat .node-version)",
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
