@@ -197,9 +197,12 @@ function isValidGitHubName(name: string): boolean {
 }
 
 // Cache Functions
-function getCacheKey(owner: string, repo: string, fromDate: string, toDate: string): string {
-    const payload = { owner, repo, fromDate, toDate };
-    return `${CACHE_KEY_PREFIX}${JSON.stringify(payload)}`;
+function getCacheKey(owner: string, repo: string, fromDate: string, toDate: string, hasToken: boolean): string {
+    // Include authentication status in cache key to prevent serving authenticated data to unauthenticated users
+    const authSuffix = hasToken ? '_auth' : '_noauth';
+    // Use JSON.stringify to avoid ambiguous underscore-separated encoding that can cause cache key collisions
+    const paramsKey = JSON.stringify({ owner, repo, fromDate, toDate });
+    return `${CACHE_KEY_PREFIX}${paramsKey}${authSuffix}`;
 }
 
 function getFromCache(cacheKey: string): CacheEntry | null {
@@ -316,7 +319,10 @@ async function fetchCopilotPRsWithCache(
     // Clean up old cache entries
     clearOldCache();
 
-    const cacheKey = getCacheKey(owner, repo, fromDate, toDate);
+    // Include authentication status in cache key to prevent security issue
+    // where cached data fetched with a token could be served when no token is provided
+    const hasToken = Boolean(token);
+    const cacheKey = getCacheKey(owner, repo, fromDate, toDate, hasToken);
     const cached = getFromCache(cacheKey);
 
     if (cached) {
