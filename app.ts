@@ -377,10 +377,23 @@ async function fetchCopilotPRsWithSearchAPI(
             } else if (response.status === 401) {
                 throw new Error('Authentication failed. Please check that your GitHub token is valid.');
             } else if (response.status === 403) {
-                const resetTime = rateLimitInfo?.reset
-                    ? new Date(rateLimitInfo.reset * 1000).toLocaleTimeString('ja-JP')
-                    : 'unknown';
-                throw new Error(`API rate limit reached. Reset at: ${resetTime}. Try again later or use a different token.`);
+                const isRateLimit =
+                    rateLimitInfo && rateLimitInfo.remaining !== undefined
+                        ? String(rateLimitInfo.remaining) === '0'
+                        : false;
+
+                if (isRateLimit) {
+                    const resetTime = rateLimitInfo?.reset
+                        ? new Date(rateLimitInfo.reset * 1000).toLocaleString('ja-JP', { timeZoneName: 'short' })
+                        : 'unknown';
+                    throw new Error(
+                        `API rate limit reached. Reset at: ${resetTime}. Try again later or use a different token.`
+                    );
+                } else {
+                    throw new Error(
+                        'Access forbidden (HTTP 403). This may be due to insufficient permissions, SSO not being authorized, or temporary abuse protection on the GitHub API.'
+                    );
+                }
             } else if (response.status === 422) {
                 throw new Error('Search query validation failed. Please check the repository name.');
             } else {
