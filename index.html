@@ -17,7 +17,7 @@
             <div class="flex items-center justify-between h-16">
                 <!-- Logo & Title -->
                 <div class="flex items-center space-x-3">
-                    <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 shadow-lg animate-float">
+                    <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 shadow-lg">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <rect x="3" y="11" width="18" height="10" rx="2"></rect>
                             <circle cx="12" cy="5" r="2"></circle>
@@ -34,7 +34,7 @@
                 
                 <!-- Theme Toggle -->
                 <button id="themeToggle" 
-                    class="p-2.5 rounded-xl glass-card hover:scale-110 transition-transform duration-300 group"
+                    class="p-2.5 rounded-xl glass-card group"
                     aria-label="Toggle theme">
                     <svg class="w-5 h-5 text-slate-700 dark:text-slate-300 dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
@@ -50,7 +50,7 @@
     <!-- Main Content -->
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Search Form -->
-        <div class="glass-card rounded-2xl p-6 mb-8 animate-fade-in">
+        <div class="glass-card rounded-2xl p-6 mb-8">
             <div class="flex items-center space-x-3 mb-6">
                 <div class="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500">
                     <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -139,9 +139,9 @@
                 <button 
                     type="submit" 
                     id="searchButton"
-                    class="w-full btn-animated px-6 py-4 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center space-x-2 group"
+                    class="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg flex items-center justify-center space-x-2 group"
                 >
-                    <svg class="w-5 h-5 group-hover:rotate-12 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8"></circle>
                         <path d="m21 21-4.35-4.35"></path>
                     </svg>
@@ -152,7 +152,7 @@
 
         <!-- Loading State -->
         <div id="loading" class="hidden">
-            <div class="glass-card rounded-2xl p-12 text-center animate-fade-in">
+            <div class="glass-card rounded-2xl p-12 text-center">
                 <div class="relative w-20 h-20 mx-auto mb-6">
                     <div class="loader-ring absolute inset-0 border-4 border-indigo-600"></div>
                     <div class="loader-ring absolute inset-0 border-4 border-purple-600"></div>
@@ -165,7 +165,7 @@
 
         <!-- Error State -->
         <div id="error" class="hidden">
-            <div class="glass-card rounded-2xl p-8 border-2 border-red-500/20 bg-red-50/50 dark:bg-red-950/20 animate-fade-in">
+            <div class="glass-card rounded-2xl p-8 border-2 border-red-500/20 bg-red-50/50 dark:bg-red-950/20">
                 <div class="flex items-start space-x-4">
                     <div class="flex-shrink-0">
                         <svg class="w-8 h-8 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -188,7 +188,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <!-- Total PRs -->
                 <div class="stat-card glass-card rounded-2xl p-6 relative overflow-hidden group before:from-indigo-500 before:to-purple-500">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full -translate-y-16 translate-x-16 group-hover:scale-150 transition-transform duration-500"></div>
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
                             <div class="p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 shadow-lg">
@@ -210,7 +210,7 @@
 
                 <!-- Merged PRs -->
                 <div class="stat-card glass-card rounded-2xl p-6 relative overflow-hidden group before:from-green-500 before:to-emerald-500">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-full -translate-y-16 translate-x-16 group-hover:scale-150 transition-transform duration-500"></div>
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
                             <div class="p-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 shadow-lg">
@@ -228,7 +228,7 @@
 
                 <!-- Closed PRs -->
                 <div class="stat-card glass-card rounded-2xl p-6 relative overflow-hidden group before:from-red-500 before:to-rose-500">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-500/10 to-rose-500/10 rounded-full -translate-y-16 translate-x-16 group-hover:scale-150 transition-transform duration-500"></div>
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-500/10 to-rose-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
                             <div class="p-3 rounded-xl bg-gradient-to-br from-red-500 to-rose-500 shadow-lg">
@@ -247,7 +247,7 @@
 
                 <!-- Open PRs -->
                 <div class="stat-card glass-card rounded-2xl p-6 relative overflow-hidden group before:from-blue-500 before:to-cyan-500">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-full -translate-y-16 translate-x-16 group-hover:scale-150 transition-transform duration-500"></div>
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
                             <div class="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg">
@@ -266,7 +266,7 @@
             </div>
 
             <!-- Merge Rate -->
-            <div class="glass-card rounded-2xl p-6 animate-fade-in">
+            <div class="glass-card rounded-2xl p-6">
                 <div class="flex items-center justify-between mb-6">
                     <div class="flex items-center space-x-3">
                         <div class="p-2 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500">
@@ -282,7 +282,7 @@
                 </div>
                 <div class="space-y-3">
                     <div class="relative h-12 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div id="mergeRateBar" class="progress-bar-fill h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center text-white font-bold transition-all duration-1000 ease-out" style="width: 0%">
+                        <div id="mergeRateBar" class="progress-bar-fill h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center text-white font-bold" style="width: 0%">
                             <span id="mergeRateText" class="relative z-10">0%</span>
                         </div>
                     </div>
@@ -297,7 +297,7 @@
             </div>
 
             <!-- Chart -->
-            <div class="glass-card rounded-2xl p-6 animate-fade-in">
+            <div class="glass-card rounded-2xl p-6">
                 <div class="flex items-center space-x-3 mb-6">
                     <div class="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500">
                         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -312,7 +312,7 @@
             </div>
 
             <!-- PR List -->
-            <div class="glass-card rounded-2xl p-6 animate-fade-in">
+            <div class="glass-card rounded-2xl p-6">
                 <div class="flex items-center space-x-3 mb-6">
                     <div class="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500">
                         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
