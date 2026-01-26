@@ -637,9 +637,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(prList).toContainText('PR with <tags> & ampersand');
   });
 
-  test('should escape HTML in user login names to prevent XSS', async ({ page }) => {
-    // Test that user login names with malicious content are properly escaped
-    // In this test, we'll use "copilot" as the base login to pass the filter
+  test('should escape HTML in PR titles with img tags', async ({ page }) => {
+    // Test that PR titles with img tags and event handlers are properly escaped
     const now = new Date();
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
@@ -656,7 +655,6 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             state: 'open',
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
-            // Use "copilot" to pass the filter, but the title will contain malicious content
             user: { login: 'copilot' },
             assignees: [],
             html_url: 'https://github.com/test/repo/pull/1',
