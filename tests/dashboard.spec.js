@@ -812,7 +812,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             state: 'open',
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'COPILOT' }, // Different case to verify case-insensitivity
+            user: { login: 'COPILOT' }, // Second PR with a different user.login to verify multiple logins render safely
             assignees: [],
             html_url: 'https://github.com/test/repo/pull/2',
             body: 'Test',
