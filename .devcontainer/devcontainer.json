@@ -2,7 +2,9 @@
   "name": "Copilot Coding Agent Activity Dashboard",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "forwardPorts": [8080],
@@ -12,7 +14,7 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": ". ${NVM_DIR}/nvm.sh && NODE_VERSION=$(cat .node-version) && nvm install $NODE_VERSION && nvm alias default $NODE_VERSION && npm install && npx playwright install --with-deps chromium",
+  "postCreateCommand": "npm install && npx playwright install --with-deps chromium",
   "customizations": {
     "vscode": {
       "extensions": [
