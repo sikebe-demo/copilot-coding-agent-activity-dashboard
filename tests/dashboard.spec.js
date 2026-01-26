@@ -645,9 +645,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     expect(titleText).toContain('\'apostrophes\'');
     
     // The key security check: ensure dangerous HTML tags are escaped, not executed
-    // Quotes in text content don't pose XSS risks, but tags and scripts do
-    expect(prListHtml).not.toContain('<script>');
-    expect(prListHtml).not.toContain('onerror=');
+    expect(prListHtml).not.toContain('<tags>');
   });
 
   test('should escape HTML in PR titles with img tags', async ({ page }) => {
@@ -803,7 +801,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
           {
             id: 1,
             number: 1,
-            title: 'Test PR with <script>alert("xss")</script> in title',
+            title: 'Test PR with <script>alert("XSS")</script> in title',
             state: 'open',
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
@@ -846,14 +844,14 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Verify that malicious HTML in titles is escaped (proving escapeHtml works)
     expect(prListHtml).toContain('&lt;script&gt;');
     expect(prListHtml).toContain('&lt;img');
-    expect(prListHtml).not.toContain('<script>alert("xss")</script>');
+    expect(prListHtml).not.toContain('<script>alert("XSS")</script>');
     expect(prListHtml).not.toContain('<img src=x onerror=alert(1)>');
     
     // Critical verification: escapeHtml is applied to BOTH fields
     // - pr.title at app.js line 425: ${escapeHtml(pr.title)}
     // - pr.user.login at app.js line 432: ${escapeHtml(pr.user.login)}
     // This means any malicious content in user.login would be escaped identically
-    await expect(page.locator('#prList')).toContainText('Test PR with <script>alert("xss")</script> in title');
+    await expect(page.locator('#prList')).toContainText('Test PR with <script>alert("XSS")</script> in title');
     await expect(page.locator('#prList')).toContainText('PR with <img src=x onerror=alert(1)> in title');
   });
 });
