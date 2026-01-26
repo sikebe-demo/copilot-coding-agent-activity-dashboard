@@ -264,17 +264,39 @@ function extractRateLimitInfo(response: Response): RateLimitInfo | null {
     const limit = response.headers.get('X-RateLimit-Limit');
     const remaining = response.headers.get('X-RateLimit-Remaining');
     const reset = response.headers.get('X-RateLimit-Reset');
-    const used = response.headers.get('X-RateLimit-Used');
+    const usedHeader = response.headers.get('X-RateLimit-Used');
 
-    if (limit && remaining && reset) {
-        return {
-            limit: parseInt(limit, 10),
-            remaining: parseInt(remaining, 10),
-            reset: parseInt(reset, 10),
-            used: used ? parseInt(used, 10) : 0
-        };
+    if (!limit || !remaining || !reset) {
+        return null;
     }
-    return null;
+
+    const limitNum = parseInt(limit, 10);
+    const remainingNum = parseInt(remaining, 10);
+    const resetNum = parseInt(reset, 10);
+
+    if (Number.isNaN(limitNum) || Number.isNaN(remainingNum) || Number.isNaN(resetNum)) {
+        return null;
+    }
+
+    let usedNum: number;
+    if (usedHeader !== null) {
+        usedNum = parseInt(usedHeader, 10);
+        if (Number.isNaN(usedNum)) {
+            return null;
+        }
+    } else {
+        usedNum = limitNum - remainingNum;
+        if (Number.isNaN(usedNum)) {
+            return null;
+        }
+    }
+
+    return {
+        limit: limitNum,
+        remaining: remainingNum,
+        reset: resetNum,
+        used: usedNum
+    };
 }
 
 interface FetchResult {
