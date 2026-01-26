@@ -405,7 +405,11 @@ async function fetchCopilotPRsWithSearchAPI(
 
         const searchResponse: SearchResponse = await response.json();
         const items = searchResponse.items;
-        totalCount = searchResponse.total_count;
+        
+        // Store total_count from first response
+        if (page === 1) {
+            totalCount = searchResponse.total_count;
+        }
 
         if (items.length === 0) break;
 
