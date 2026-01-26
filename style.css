@@ -65,8 +65,11 @@
 
 /* Loading Animation */
 .loader-ring {
-  border: 3px solid transparent;
-  border-top-color: currentColor;
+  border-style: solid;
+  border-width: 3px;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
