@@ -158,7 +158,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Should show error since "owner " with trailing space is not a valid repository owner
     const error = page.locator('#error');
     await expect(error).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText(/Repository not found|error/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Invalid repository name|Repository not found|error/i);
   });
 
   test('should handle repository input with whitespace after slash', async ({ page }) => {
@@ -180,7 +180,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Should show error since " repo" with leading space is not a valid repository name
     const error = page.locator('#error');
     await expect(error).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText(/Repository not found|error/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Invalid repository name|Repository not found|error/i);
   });
 
   test('should show error when start date is after end date', async ({ page }) => {
@@ -888,6 +888,90 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const titleElement = page.locator('#prList h3').first();
     const titleText = await titleElement.textContent();
     expect(titleText?.trim()).toBe('');
+  });
+
+  test('should sanitize javascript: URLs in html_url to prevent XSS', async ({ page }) => {
+    // Test that malicious javascript: protocol URLs are sanitized to "#"
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 1,
+            number: 1,
+            title: 'Malicious PR with javascript URL',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            assignees: [{ login: 'copilot' }],
+            html_url: 'javascript:alert("XSS")',
+            body: 'Test',
+            labels: []
+          }
+        ])
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for results
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Get the link element and verify its href is sanitized to "#"
+    const prLink = page.locator('#prList a[target="_blank"]').first();
+    const href = await prLink.getAttribute('href');
+    expect(href).toBe('#');
+
+    // Verify the javascript: URL is NOT in the href
+    expect(href).not.toContain('javascript:');
+  });
+
+  test('should allow valid https URLs in html_url', async ({ page }) => {
+    // Test that valid https:// URLs are preserved
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const validUrl = 'https://github.com/test/repo/pull/42';
+
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 1,
+            number: 42,
+            title: 'Valid PR with https URL',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            assignees: [{ login: 'copilot' }],
+            html_url: validUrl,
+            body: 'Test',
+            labels: []
+          }
+        ])
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for results
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Get the link element and verify its href is the valid URL
+    const prLink = page.locator('#prList a[target="_blank"]').first();
+    const href = await prLink.getAttribute('href');
+    expect(href).toBe(validUrl);
   });
 
 });
