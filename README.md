@@ -31,7 +31,7 @@ A modern, self-contained web application for analyzing and visualizing Pull Requ
 
 ### Prerequisites
 
-- Node.js 22+ 
+- Node.js 24+ 
 - npm or yarn
 
 ### Installation
