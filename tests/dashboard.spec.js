@@ -72,31 +72,31 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const html = page.locator('html');
     const themeToggle = page.locator('#themeToggle');
     
-    // Initial state (light mode)
-    await expect(html).not.toHaveClass(/dark/);
-    
-    // Toggle to dark mode
-    await themeToggle.click();
+    // Initial state (dark mode - new default)
     await expect(html).toHaveClass(/dark/);
     
-    // Toggle back to light mode
+    // Toggle to light mode
     await themeToggle.click();
     await expect(html).not.toHaveClass(/dark/);
+    
+    // Toggle back to dark mode
+    await themeToggle.click();
+    await expect(html).toHaveClass(/dark/);
   });
 
   test('should persist dark mode preference', async ({ page, context }) => {
     const themeToggle = page.locator('#themeToggle');
     
-    // Enable dark mode
+    // Initial state is dark mode, toggle to light mode
     await themeToggle.click();
-    await expect(page.locator('html')).toHaveClass(/dark/);
+    await expect(page.locator('html')).not.toHaveClass(/dark/);
     
     // Create new page in same context
     const newPage = await context.newPage();
     await newPage.goto('/');
     
-    // Dark mode should be persisted
-    await expect(newPage.locator('html')).toHaveClass(/dark/);
+    // Light mode should be persisted
+    await expect(newPage.locator('html')).not.toHaveClass(/dark/);
   });
 
   test('should have responsive design for mobile', async ({ page }) => {

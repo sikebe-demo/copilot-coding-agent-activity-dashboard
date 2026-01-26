@@ -11,11 +11,12 @@ document.addEventListener('DOMContentLoaded', () => {
 // Theme Management
 function initializeTheme() {
     const themeToggle = document.getElementById('themeToggle');
-    const savedTheme = localStorage.getItem('theme') || 'light';
+    const savedTheme = localStorage.getItem('theme') || 'dark';
     
-    if (savedTheme === 'dark') {
+    if (savedTheme === 'light') {
+        document.documentElement.classList.remove('dark');
+    } else {
         document.documentElement.classList.add('dark');
-        document.documentElement.setAttribute('data-theme', 'dark');
     }
     
     themeToggle?.addEventListener('click', toggleTheme);
@@ -27,11 +28,9 @@ function toggleTheme() {
     
     if (isDark) {
         html.classList.remove('dark');
-        html.setAttribute('data-theme', 'light');
         localStorage.setItem('theme', 'light');
     } else {
         html.classList.add('dark');
-        html.setAttribute('data-theme', 'dark');
         localStorage.setItem('theme', 'dark');
     }
     
@@ -287,32 +286,39 @@ function displayChart(prs) {
                 {
                     label: 'Merged',
                     data: mergedData,
-                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                    backgroundColor: 'rgba(16, 185, 129, 0.85)',
                     borderColor: 'rgba(16, 185, 129, 1)',
-                    borderWidth: 2,
-                    borderRadius: 8
+                    borderWidth: 0,
+                    borderRadius: 6,
+                    hoverBackgroundColor: 'rgba(16, 185, 129, 1)'
                 },
                 {
                     label: 'Closed',
                     data: closedData,
-                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.85)',
                     borderColor: 'rgba(239, 68, 68, 1)',
-                    borderWidth: 2,
-                    borderRadius: 8
+                    borderWidth: 0,
+                    borderRadius: 6,
+                    hoverBackgroundColor: 'rgba(239, 68, 68, 1)'
                 },
                 {
                     label: 'Open',
                     data: openData,
-                    backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.85)',
                     borderColor: 'rgba(59, 130, 246, 1)',
-                    borderWidth: 2,
-                    borderRadius: 8
+                    borderWidth: 0,
+                    borderRadius: 6,
+                    hoverBackgroundColor: 'rgba(59, 130, 246, 1)'
                 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            animation: {
+                duration: 1000,
+                easing: 'easeOutQuart'
+            },
             plugins: {
                 legend: {
                     position: 'top',
@@ -328,13 +334,15 @@ function displayChart(prs) {
                     }
                 },
                 tooltip: {
-                    backgroundColor: isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
-                    titleColor: textColor,
-                    bodyColor: textColor,
-                    borderColor: isDark ? '#334155' : '#e2e8f0',
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleColor: '#f1f5f9',
+                    bodyColor: '#cbd5e1',
+                    borderColor: 'rgba(139, 92, 246, 0.3)',
                     borderWidth: 1,
-                    padding: 12,
-                    cornerRadius: 8
+                    padding: 14,
+                    cornerRadius: 12,
+                    displayColors: true,
+                    boxPadding: 6
                 }
             },
             scales: {
@@ -379,13 +387,13 @@ function updateChartTheme() {
     
     const isDark = document.documentElement.classList.contains('dark');
     const textColor = isDark ? '#e2e8f0' : '#1e293b';
-    const gridColor = isDark ? '#334155' : '#e2e8f0';
+    const gridColor = isDark ? 'rgba(51, 65, 85, 0.5)' : 'rgba(226, 232, 240, 0.8)';
     
     chartInstance.options.plugins.legend.labels.color = textColor;
-    chartInstance.options.plugins.tooltip.backgroundColor = isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)';
-    chartInstance.options.plugins.tooltip.titleColor = textColor;
-    chartInstance.options.plugins.tooltip.bodyColor = textColor;
-    chartInstance.options.plugins.tooltip.borderColor = isDark ? '#334155' : '#e2e8f0';
+    chartInstance.options.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.95)';
+    chartInstance.options.plugins.tooltip.titleColor = '#f1f5f9';
+    chartInstance.options.plugins.tooltip.bodyColor = '#cbd5e1';
+    chartInstance.options.plugins.tooltip.borderColor = 'rgba(139, 92, 246, 0.3)';
     chartInstance.options.scales.x.ticks.color = textColor;
     chartInstance.options.scales.x.grid.color = gridColor;
     chartInstance.options.scales.y.ticks.color = textColor;
@@ -403,12 +411,15 @@ function displayPRList(prs) {
     if (prs.length === 0) {
         prList.innerHTML = `
             <div class="text-center py-16">
-                <svg class="w-16 h-16 mx-auto mb-4 text-slate-300 dark:text-slate-700" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-                <p class="text-slate-500 dark:text-slate-400">No PRs created by Copilot Coding Agent found</p>
+                <div class="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
+                    <svg class="w-10 h-10 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                </div>
+                <p class="text-slate-400 text-lg font-medium">No PRs created by Copilot Coding Agent found</p>
+                <p class="text-slate-500 text-sm mt-2">Try adjusting your search criteria</p>
             </div>
         `;
         return;
@@ -424,17 +435,17 @@ function displayPRList(prs) {
         const status = pr.merged_at ? 'merged' : pr.state;
         const statusConfig = {
             merged: {
-                class: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
+                class: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-emerald-500/20',
                 icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
                 text: 'Merged'
             },
             closed: {
-                class: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
+                class: 'bg-red-500/20 text-red-400 border border-red-500/30 shadow-red-500/20',
                 icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
                 text: 'Closed'
             },
             open: {
-                class: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
+                class: 'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-blue-500/20',
                 icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg>`,
                 text: 'Open'
             }
@@ -443,38 +454,38 @@ function displayPRList(prs) {
         const config = statusConfig[status];
         
         const prElement = document.createElement('div');
-        prElement.className = 'pr-item p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 animate-slide-in';
+        prElement.className = 'pr-item p-4 rounded-xl bg-slate-800/40 border border-slate-700/50 hover:border-violet-500/50 hover:bg-slate-800/60 animate-slide-in';
         prElement.style.animationDelay = `${index * 0.05}s`;
         prElement.innerHTML = `
             <div class="flex items-start justify-between gap-4 mb-3">
                 <div class="flex items-center gap-2 flex-shrink-0">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${config.class}">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm ${config.class}">
                         ${config.icon}
                         ${config.text}
                     </span>
-                    <span class="text-xs text-slate-500 dark:text-slate-400">#${pr.number}</span>
+                    <span class="text-xs text-slate-500 font-mono">#${pr.number}</span>
                 </div>
                 <a href="${pr.html_url}" target="_blank" rel="noopener" 
-                   class="flex-shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                   class="flex-shrink-0 p-1.5 rounded-lg hover:bg-slate-700/50 transition-colors group"
                    title="GitHubで開く">
-                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-slate-500 group-hover:text-violet-400 transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                         <polyline points="15 3 21 3 21 9"></polyline>
                         <line x1="10" y1="14" x2="21" y2="3"></line>
                     </svg>
                 </a>
             </div>
-            <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8">${escapeHtml(pr.title)}</h3>
-            <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
-                <span class="flex items-center gap-1">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <h3 class="font-semibold text-slate-100 mb-2 pr-8 leading-snug">${escapeHtml(pr.title)}</h3>
+            <div class="flex items-center gap-4 text-sm text-slate-400">
+                <span class="flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                         <circle cx="12" cy="7" r="4"></circle>
                     </svg>
                     ${escapeHtml(pr.user.login)}
                 </span>
-                <span class="flex items-center gap-1">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <span class="flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                         <line x1="16" y1="2" x2="16" y2="6"></line>
                         <line x1="8" y1="2" x2="8" y2="6"></line>
