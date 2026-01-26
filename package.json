@@ -1,7 +1,7 @@
 {
   "name": "copilot-coding-agent-activity-dashboard",
   "version": "1.0.0",
-  "description": "GitHub Copilot Coding Agent PR Dashboard - npmパッケージ管理でモダンな静的サイト",
+  "description": "GitHub Copilot Coding Agent PR Dashboard",
   "type": "module",
   "scripts": {
     "dev": "vite",
