@@ -292,7 +292,7 @@ function displayChart(prs: PullRequest[], fromDate: string, toDate: string): voi
     if (fromDate && toDate) {
         const startDate = new Date(fromDate);
         const endDate = new Date(toDate);
-        
+
         // Use a new Date object for each iteration to avoid mutation issues
         const currentDate = new Date(startDate);
         while (currentDate <= endDate) {
@@ -303,7 +303,7 @@ function displayChart(prs: PullRequest[], fromDate: string, toDate: string): voi
         // Fallback: use dates from PRs if date range is not available
         dates.push(...Object.keys(prsByDate).sort());
     }
-    
+
     // Map data for all dates (0 for dates with no PRs)
     const mergedData = dates.map(date => prsByDate[date]?.merged ?? 0);
     const closedData = dates.map(date => prsByDate[date]?.closed ?? 0);
@@ -325,8 +325,8 @@ function displayChart(prs: PullRequest[], fromDate: string, toDate: string): voi
     }
 
     const isDark = document.documentElement.classList.contains('dark');
-    const textColor = isDark ? '#e2e8f0' : '#1e293b';
-    const gridColor = isDark ? '#334155' : '#e2e8f0';
+    const textColor = isDark ? '#f1f5f9' : '#1e293b';
+    const gridColor = isDark ? '#475569' : '#e2e8f0';
 
     chartInstance = new Chart(canvas, {
         type: 'bar',
@@ -425,8 +425,8 @@ function updateChartTheme(): void {
     if (!chartInstance) return;
 
     const isDark = document.documentElement.classList.contains('dark');
-    const textColor = isDark ? '#e2e8f0' : '#1e293b';
-    const gridColor = isDark ? '#334155' : '#e2e8f0';
+    const textColor = isDark ? '#f1f5f9' : '#1e293b';
+    const gridColor = isDark ? '#475569' : '#e2e8f0';
 
     if (chartInstance.options.plugins?.legend?.labels) {
         chartInstance.options.plugins.legend.labels.color = textColor;
@@ -509,7 +509,7 @@ function displayPRList(prs: PullRequest[]): void {
         prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
         prElement.innerHTML = `
             <div class="flex items-start justify-between gap-4 mb-3">
-                <div class="flex items-center gap-2 flex-shrink-0">
+                <div class="flex items-center gap-2 shrink-0">
                     <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${config.class}">
                         ${config.icon}
                         ${config.text}
@@ -517,7 +517,7 @@ function displayPRList(prs: PullRequest[]): void {
                     ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-300">${prNumberDisplay}</span>` : ''}
                 </div>
                 <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
-                   class="flex-shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                   class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                    title="GitHubで開く">
                     <svg class="w-4 h-4 text-slate-500 dark:text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
