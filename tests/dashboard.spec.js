@@ -101,6 +101,88 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(page.locator('#errorMessage')).toContainText('owner/repo');
   });
 
+  test('should handle repository input with leading and trailing whitespace', async ({ page }) => {
+    // Mock GitHub API to verify trimming works
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'Copilot' },
+            assignees: [{ login: 'Copilot' }],
+            html_url: 'https://github.com/test/repo/pull/1',
+            body: 'Copilot PR',
+            labels: []
+          }
+        ])
+      });
+    });
+
+    // Fill form with whitespace on both sides
+    await page.fill('#repoInput', '  test/repo  ');
+    await page.click('#searchButton');
+
+    // Should process successfully and show results (whitespace is trimmed)
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
+    const totalPRs = page.locator('#totalPRs');
+    await expect(totalPRs).toContainText('1');
+  });
+
+  test('should handle repository input with whitespace before slash', async ({ page }) => {
+    // Mock GitHub API to return error for invalid repository name with whitespace
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Not Found' })
+      });
+    });
+
+    // Fill form with whitespace before slash
+    // trim() only removes leading/trailing whitespace, not internal spaces
+    // So "owner /repo" will split into ["owner ", "repo"]
+    await page.fill('#repoInput', 'owner /repo');
+    await page.click('#searchButton');
+
+    // Should show error since "owner " with trailing space is not a valid repository owner
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText(/Repository not found|error/i);
+  });
+
+  test('should handle repository input with whitespace after slash', async ({ page }) => {
+    // Mock GitHub API to return error for invalid repository name with whitespace
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Not Found' })
+      });
+    });
+
+    // Fill form with whitespace after slash
+    // trim() only removes leading/trailing whitespace, not internal spaces
+    // So "owner/ repo" will split into ["owner", " repo"]
+    await page.fill('#repoInput', 'owner/ repo');
+    await page.click('#searchButton');
+
+    // Should show error since " repo" with leading space is not a valid repository name
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText(/Repository not found|error/i);
+  });
+
   test('should show error when start date is after end date', async ({ page }) => {
     // Set dates where fromDate > toDate
     const futureDate = new Date();
