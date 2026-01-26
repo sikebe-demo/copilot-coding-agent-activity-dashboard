@@ -129,7 +129,7 @@ async function handleFormSubmit(e: Event): Promise<void> {
 
     try {
         const prs = await fetchCopilotPRs(owner, repo, fromDate, toDate, token);
-        displayResults(prs);
+        displayResults(prs, fromDate, toDate);
     } catch (error) {
         showError(error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
@@ -207,7 +207,7 @@ function isCopilotPR(pr: PullRequest): boolean {
 }
 
 // Display Functions
-function displayResults(prs: PullRequest[]): void {
+function displayResults(prs: PullRequest[], fromDate: string, toDate: string): void {
     const merged = prs.filter(pr => pr.merged_at !== null);
     const closed = prs.filter(pr => pr.state === 'closed' && pr.merged_at === null);
     const open = prs.filter(pr => pr.state === 'open');
@@ -236,11 +236,7 @@ function displayResults(prs: PullRequest[]): void {
     if (mergeRateTextEl) mergeRateTextEl.textContent = `${mergeRate}%`;
     if (mergeRateBarEl) mergeRateBarEl.style.width = `${mergeRate}%`;
 
-    // Display chart - get date range from form
-    const fromDateEl = document.getElementById('fromDate') as HTMLInputElement | null;
-    const toDateEl = document.getElementById('toDate') as HTMLInputElement | null;
-    const fromDate = fromDateEl?.value ?? '';
-    const toDate = toDateEl?.value ?? '';
+    // Display chart with date range passed from form submission
     displayChart(prs, fromDate, toDate);
 
     // Display PR list
