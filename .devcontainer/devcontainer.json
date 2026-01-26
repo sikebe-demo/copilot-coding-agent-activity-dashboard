@@ -2,6 +2,7 @@
   "name": "Copilot Coding Agent Activity Dashboard",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
+    // NOTE: Node.js バージョンを変更する場合は、.node-version ファイルも同時に更新してください
     "ghcr.io/devcontainers/features/node:1": {
       "version": "22"
     },
