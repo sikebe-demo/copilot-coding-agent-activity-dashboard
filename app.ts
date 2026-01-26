@@ -342,8 +342,7 @@ function displayChart(prs: PullRequest[], fromDate: string, toDate: string): voi
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
-            aspectRatio: 3,
+            maintainAspectRatio: false,
             plugins: {
                 legend: {
                     position: 'top',
