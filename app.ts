@@ -323,7 +323,7 @@ function displayChart(prs: PullRequest[]): void {
         options: {
             responsive: true,
             maintainAspectRatio: true,
-            aspectRatio: 2.5,
+            aspectRatio: 3,
             plugins: {
                 legend: {
                     position: 'top',
