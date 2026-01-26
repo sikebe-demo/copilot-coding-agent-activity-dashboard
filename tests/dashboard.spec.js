@@ -1025,6 +1025,63 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(rateLimitInfo).toContainText('No API call made');
   });
 
+  test('should maintain separate caches for authenticated and unauthenticated requests', async ({ page }) => {
+    // Mock API with different responses for different authentication states
+    let requestCount = 0;
+    await page.route('https://api.github.com/search/issues**', async route => {
+      requestCount++;
+      const hasAuthHeader = route.request().headers()['authorization'] !== undefined;
+      
+      const responseData = hasAuthHeader 
+        ? [createPR({ id: 1, number: 1, title: 'Authenticated PR' })]
+        : [createPR({ id: 2, number: 2, title: 'Unauthenticated PR' })];
+      
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          ...createRateLimitHeaders(4999, 5000, 1)
+        },
+        body: JSON.stringify(createSearchResponse(responseData))
+      });
+    });
+
+    // First request without token - should fetch and cache
+    await submitSearch(page, { repo: 'auth-cache-test/repo' });
+    await waitForResults(page);
+    expect(requestCount).toBe(1);
+    await expect(page.locator('#prList')).toContainText('Unauthenticated PR');
+
+    // Second request without token - should use cache (no new API call)
+    await page.click('#searchButton');
+    await waitForResults(page);
+    expect(requestCount).toBe(1); // Still 1, cache was used
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Cached');
+    await expect(page.locator('#prList')).toContainText('Unauthenticated PR');
+
+    // Third request WITH token - should fetch new data (different cache key)
+    await submitSearch(page, { repo: 'auth-cache-test/repo', token: 'ghp_test123' });
+    await waitForResults(page);
+    expect(requestCount).toBe(2); // New API call made
+    await expect(page.locator('#prList')).toContainText('Authenticated PR');
+
+    // Fourth request WITH same token - should use auth cache
+    await page.click('#searchButton');
+    await waitForResults(page);
+    expect(requestCount).toBe(2); // Still 2, auth cache was used
+    await expect(rateLimitInfo).toContainText('Cached');
+    await expect(page.locator('#prList')).toContainText('Authenticated PR');
+
+    // Fifth request without token again - should use unauthenticated cache
+    await page.fill('#tokenInput', ''); // Clear token
+    await page.click('#searchButton');
+    await waitForResults(page);
+    expect(requestCount).toBe(2); // Still 2, unauthenticated cache was used
+    await expect(rateLimitInfo).toContainText('Cached');
+    await expect(page.locator('#prList')).toContainText('Unauthenticated PR');
+  });
+
   test('should update chart theme when toggling dark mode', async ({ page }) => {
     await mockSearchAPI(page, { prs: [createPR({ state: 'closed', merged_at: getDaysAgoISO(5) })] });
 
