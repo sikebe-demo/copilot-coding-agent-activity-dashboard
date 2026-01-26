@@ -1,13 +1,10 @@
 {
   "name": "Copilot Coding Agent Activity Dashboard",
-  "build": {
-    "dockerfile": "Dockerfile",
-    "args": {
-      "NODE_VERSION": "${localEnv:NODE_VERSION:22}"
-    }
-  },
-  "initializeCommand": "export NODE_VERSION=$(cat .node-version)",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "nodeVersionFile": ".node-version"
+    },
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "forwardPorts": [8080],
