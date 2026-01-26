@@ -152,32 +152,30 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
 }
 
 function isCopilotPR(pr) {
-    // Check if PR was created by copilot
+    // Primary detection: Check if branch name starts with 'copilot/'
+    // This is the most reliable method as Copilot Coding Agent always creates
+    // branches with this prefix (e.g., copilot/add-theme-switcher, copilot/issue-123)
+    // See: https://github.blog/changelog/2025-10-16-copilot-coding-agent-uses-better-branch-names-and-pull-request-titles/
+    const branchName = pr.head?.ref || '';
+    if (branchName.startsWith('copilot/')) {
+        return true;
+    }
+
+    // Fallback detection methods for historical compatibility
+    // These are less reliable as they can match non-Copilot PRs
+
+    // Check if PR was created by known Copilot users
     const copilotUsers = ['copilot-workspace-helper', 'github-copilot', 'copilot'];
     const isCopilotUser = copilotUsers.some(user =>
         pr.user.login.toLowerCase().includes(user)
     );
 
-    // Check PR title/body for copilot indicators
-    const copilotIndicators = [
-        'copilot',
-        'github copilot',
-        'ai generated',
-        'workspace ai',
-        'copilot workspace'
-    ];
-
-    const titleBody = `${pr.title} ${pr.body || ''}`.toLowerCase();
-    const hasIndicator = copilotIndicators.some(indicator =>
-        titleBody.includes(indicator)
-    );
-
-    // Check labels
+    // Check labels for 'copilot'
     const hasLabel = pr.labels && pr.labels.some(label =>
         label.name.toLowerCase().includes('copilot')
     );
 
-    return isCopilotUser || hasIndicator || hasLabel;
+    return isCopilotUser || hasLabel;
 }
 
 // Display Functions

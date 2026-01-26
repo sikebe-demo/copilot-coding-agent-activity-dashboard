@@ -405,4 +405,63 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     expect(fromValue).toBeTruthy();
     expect(toValue).toBeTruthy();
   });
+
+  test('should detect Copilot PRs by branch name prefix', async ({ page }) => {
+    // Test the primary detection method: branch names starting with 'copilot/'
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/**', route => {
+      const prs = [
+        {
+          id: 1,
+          number: 1,
+          title: 'Add theme switcher',
+          state: 'closed',
+          merged_at: fiveDaysAgo.toISOString(),
+          created_at: fiveDaysAgo.toISOString(),
+          user: { login: 'regular-user' },
+          html_url: 'https://github.com/test/repo/pull/1',
+          body: 'Adds dark mode support',
+          labels: [],
+          head: { ref: 'copilot/add-theme-switcher' }
+        },
+        {
+          id: 2,
+          number: 2,
+          title: 'Regular PR',
+          state: 'open',
+          merged_at: null,
+          created_at: fiveDaysAgo.toISOString(),
+          user: { login: 'another-user' },
+          html_url: 'https://github.com/test/repo/pull/2',
+          body: 'Manual changes',
+          labels: [],
+          head: { ref: 'feature/manual-changes' }
+        }
+      ];
+
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(prs)
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for results
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
+
+    // Only the PR with copilot/ branch prefix should be detected
+    const totalPRs = page.locator('#totalPRs');
+    await expect(totalPRs).toContainText('1');
+
+    // Verify the correct PR is shown
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('Add theme switcher');
+    await expect(prList).not.toContainText('Regular PR');
+  });
 });

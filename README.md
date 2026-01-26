@@ -91,8 +91,13 @@ To avoid API rate limits and access private repositories:
 
 The dashboard identifies PRs created by Copilot Coding Agent using:
 
+### Primary Detection (Recommended)
+- **Branch name prefix**: PRs with branch names starting with `copilot/` (e.g., `copilot/add-theme-switcher`, `copilot/issue-123`)
+  - This is the most reliable method as Copilot Coding Agent always creates branches with this prefix
+  - See [GitHub Blog Changelog](https://github.blog/changelog/2025-10-16-copilot-coding-agent-uses-better-branch-names-and-pull-request-titles/)
+
+### Fallback Detection (Historical Compatibility)
 - **Username patterns**: `copilot-workspace-helper`, `github-copilot`, `copilot`
-- **Keywords**: "copilot", "github copilot", "ai generated", "workspace ai", "copilot workspace"
 - **Labels**: PRs with "copilot" label
 
 ## 📁 Project Structure
