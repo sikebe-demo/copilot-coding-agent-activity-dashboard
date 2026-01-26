@@ -637,8 +637,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const prList = page.locator('#prList');
     await expect(prList).toContainText('PR with <tags> & "quotes" and \'apostrophes\'');
     
-    // Verify that quotes are properly displayed (escapeHtml converts them to entities,
-    // which the browser then displays correctly as the original characters)
+    // Verify that quotes are properly escaped by escapeHtml
+    // Quote escaping prevents attribute injection attacks (e.g., breaking out of HTML attributes)
+    // even though the current code places escaped content only in text nodes.
+    // This is a defensive measure to protect against potential future code changes.
     const titleElement = page.locator('#prList h3');
     const titleText = await titleElement.textContent();
     expect(titleText).toContain('"quotes"');
