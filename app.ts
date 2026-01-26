@@ -164,7 +164,7 @@ async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, to
                 const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
                 if (rateLimitRemaining === '0') {
                     const resetTime = response.headers.get('X-RateLimit-Reset');
-                    const resetDate = resetTime ? new Date(parseInt(resetTime) * 1000) : null;
+                    const resetDate = resetTime ? new Date(parseInt(resetTime, 10) * 1000) : null;
                     const resetMessage = resetDate
                         ? ` Rate limit resets at ${resetDate.toLocaleTimeString()}.`
                         : '';
