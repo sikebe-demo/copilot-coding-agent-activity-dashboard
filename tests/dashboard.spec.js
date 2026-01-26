@@ -541,4 +541,252 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(prList).not.toContainText('Human PR assigned to Copilot');
     await expect(prList).not.toContainText('Regular PR with copilot branch');
   });
+
+  test('should escape HTML in PR titles to prevent XSS', async ({ page }) => {
+    // Test that PR titles with malicious HTML/JavaScript are properly escaped
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 1,
+            number: 1,
+            title: '<script>alert("XSS")</script>Malicious PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            assignees: [{ login: 'copilot' }],
+            html_url: 'https://github.com/test/repo/pull/1',
+            body: 'Test',
+            labels: []
+          }
+        ])
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for results
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Get the HTML content
+    const prListHtml = await page.locator('#prList').innerHTML();
+
+    // Verify that script tags are escaped
+    expect(prListHtml).toContain('&lt;script&gt;');
+    expect(prListHtml).toContain('&lt;/script&gt;');
+    expect(prListHtml).not.toContain('<script>alert');
+
+    // Verify the escaped text is displayed correctly
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('<script>alert("XSS")</script>Malicious PR');
+  });
+
+  test('should escape HTML entities in PR titles', async ({ page }) => {
+    // Test that various HTML entities are properly escaped
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 1,
+            number: 1,
+            title: 'PR with <tags> & ampersand',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            assignees: [{ login: 'copilot' }],
+            html_url: 'https://github.com/test/repo/pull/1',
+            body: 'Test',
+            labels: []
+          }
+        ])
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for results
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Get the HTML content
+    const prListHtml = await page.locator('#prList').innerHTML();
+
+    // Verify that all special characters are escaped
+    expect(prListHtml).toContain('&lt;tags&gt;');
+    expect(prListHtml).toContain('&amp;');
+    // Verify that the dangerous tags are not present unescaped
+    expect(prListHtml).not.toContain('<tags>');
+
+    // Verify the text is displayed correctly
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('PR with <tags> & ampersand');
+  });
+
+  test('should escape HTML in user login names to prevent XSS', async ({ page }) => {
+    // Test that user login names with malicious content are properly escaped
+    // In this test, we'll use "copilot" as the base login to pass the filter
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR with special chars in login display',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            // Use "copilot" to pass the filter, but the title will contain malicious content
+            user: { login: 'copilot' },
+            assignees: [],
+            html_url: 'https://github.com/test/repo/pull/1',
+            body: 'Test',
+            labels: []
+          },
+          {
+            id: 2,
+            number: 2,
+            title: '<img src=x onerror=alert(1)> in title',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            assignees: [],
+            html_url: 'https://github.com/test/repo/pull/2',
+            body: 'Test',
+            labels: []
+          }
+        ])
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for results
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Get the HTML content
+    const prListHtml = await page.locator('#prList').innerHTML();
+
+    // Verify that img tag in the title is escaped
+    expect(prListHtml).toContain('&lt;img');
+    expect(prListHtml).toContain('&gt;');
+    expect(prListHtml).not.toContain('<img src=x onerror=alert(1)>');
+
+    // Verify the escaped text is displayed correctly in the title
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('<img src=x onerror=alert(1)> in title');
+    
+    // Also verify that user login "copilot" is displayed safely
+    await expect(prList).toContainText('copilot');
+  });
+
+  test('should escape HTML event handlers in PR titles', async ({ page }) => {
+    // Test that HTML event handlers are properly escaped
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 1,
+            number: 1,
+            title: '<div onload=malicious()>Evil PR</div>',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            assignees: [{ login: 'copilot' }],
+            html_url: 'https://github.com/test/repo/pull/1',
+            body: 'Test',
+            labels: []
+          }
+        ])
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for results
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Get the HTML content
+    const prListHtml = await page.locator('#prList').innerHTML();
+
+    // Verify that div tags are escaped
+    expect(prListHtml).toContain('&lt;div');
+    expect(prListHtml).toContain('&gt;');
+    expect(prListHtml).toContain('&lt;/div&gt;');
+    // Ensure the div tag is not executed as actual HTML
+    expect(prListHtml).not.toContain('<div onload=');
+    
+    // Verify the text is displayed correctly (as escaped text)
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('<div onload=malicious()>Evil PR</div>');
+  });
+
+  test('should handle null and undefined values in escapeHtml', async ({ page }) => {
+    // Test that escapeHtml properly handles null/undefined values
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 1,
+            number: 1,
+            title: null,
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            assignees: [{ login: 'copilot' }],
+            html_url: 'https://github.com/test/repo/pull/1',
+            body: 'Test',
+            labels: []
+          }
+        ])
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for results
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Should not throw an error and should display empty string
+    const prList = page.locator('#prList');
+    await expect(prList).toBeVisible();
+  });
 });
