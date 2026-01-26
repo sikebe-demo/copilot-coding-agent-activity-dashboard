@@ -68,6 +68,57 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(page.locator('#errorMessage')).toContainText('owner/repo');
   });
 
+  test('should show error for repository format with empty owner', async ({ page }) => {
+    // Fill form with missing owner (e.g., "/repo")
+    await page.fill('#repoInput', '/repo');
+    await page.click('#searchButton');
+
+    // Check error message
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText('owner/repo');
+  });
+
+  test('should show error for repository format with empty repo', async ({ page }) => {
+    // Fill form with missing repo (e.g., "owner/")
+    await page.fill('#repoInput', 'owner/');
+    await page.click('#searchButton');
+
+    // Check error message
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText('owner/repo');
+  });
+
+  test('should show error for repository format with multiple slashes', async ({ page }) => {
+    // Fill form with extra slashes (e.g., "owner/repo/extra")
+    await page.fill('#repoInput', 'owner/repo/extra');
+    await page.click('#searchButton');
+
+    // Check error message
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText('owner/repo');
+  });
+
+  test('should show error when start date is after end date', async ({ page }) => {
+    // Set dates where fromDate > toDate
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 10);
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - 10);
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.fill('#fromDate', futureDate.toISOString().split('T')[0]);
+    await page.fill('#toDate', pastDate.toISOString().split('T')[0]);
+    await page.click('#searchButton');
+
+    // Check error message
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText(/start date.*before.*end date/i);
+  });
+
   test('should toggle dark mode', async ({ page }) => {
     const html = page.locator('html');
     const themeToggle = page.locator('#themeToggle');

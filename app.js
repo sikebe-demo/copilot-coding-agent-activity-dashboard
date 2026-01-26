@@ -68,12 +68,16 @@ async function handleFormSubmit(e) {
     const toDate = document.getElementById('toDate').value;
     const token = document.getElementById('tokenInput').value.trim();
 
-    if (!repoInput.includes('/')) {
+    const [owner, repo, ...rest] = repoInput.split('/');
+    if (!owner || !repo || rest.length > 0) {
         showError('Please enter repository in "owner/repo" format');
         return;
     }
 
-    const [owner, repo] = repoInput.split('/');
+    if (new Date(fromDate) > new Date(toDate)) {
+        showError('Start date must be before end date');
+        return;
+    }
 
     showLoading();
     hideError();
@@ -443,9 +447,13 @@ function displayPRList(prs) {
 }
 
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    if (text == null) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // UI State Management
