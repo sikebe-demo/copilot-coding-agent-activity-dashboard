@@ -15,7 +15,7 @@
   .glass-card {
     @apply bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-white/20 dark:border-slate-800/20 shadow-xl;
   }
-  
+
   /* Gradient Text */
   .gradient-text {
     @apply bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent;
@@ -25,21 +25,21 @@
 @layer utilities {
   /* Background Pattern */
   .bg-pattern {
-    background-image: 
+    background-image:
       linear-gradient(to right, rgba(99, 102, 241, 0.03) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
     background-size: 40px 40px;
   }
-  
+
   /* Glow Effect */
   .glow {
     box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
   }
-  
+
   .glow-success {
     box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
   }
-  
+
   .glow-error {
     box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
   }

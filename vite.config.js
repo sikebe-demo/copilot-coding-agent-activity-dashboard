@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  base: '/copilot-coding-agent-activity-dashboard/',
   root: '.',
   build: {
     outDir: 'dist',
