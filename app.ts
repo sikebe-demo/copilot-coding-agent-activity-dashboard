@@ -407,11 +407,12 @@ async function fetchCopilotPRsWithSearchAPI(
         const searchResponse: SearchResponse = await response.json();
         const items = searchResponse.items;
         
-        // Store total_count and incomplete_results from first response
+        // Store total_count from first response
         if (page === 1) {
             totalCount = searchResponse.total_count;
-            incompleteResults = searchResponse.incomplete_results;
         }
+        // Update incompleteResults on every page; any true value is preserved
+        incompleteResults = incompleteResults || searchResponse.incomplete_results;
 
         if (items.length === 0) break;
 
