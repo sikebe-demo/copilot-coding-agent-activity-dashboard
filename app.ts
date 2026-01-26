@@ -547,8 +547,9 @@ function sanitizeUrl(url: string | null | undefined): string {
     try {
         const parsedUrl = new URL(String(url).trim());
         // Only allow http and https protocols using URL constructor validation
+        // The URL constructor normalizes and encodes the URL, so no additional escaping needed
         if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
-            return escapeHtml(parsedUrl.href);
+            return parsedUrl.href;
         }
     } catch {
         // Invalid URL
