@@ -18,16 +18,12 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
         "bradlc.vscode-tailwindcss",
         "ms-playwright.playwright",
         "GitHub.copilot",
         "GitHub.copilot-chat"
       ],
       "settings": {
-        "editor.formatOnSave": true,
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
         "tailwindCSS.includeLanguages": {
           "html": "html",
           "javascript": "javascript"
