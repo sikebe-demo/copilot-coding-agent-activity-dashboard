@@ -173,7 +173,7 @@ async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, to
                         }
                     }
                     const resetMessage = resetDate
-                        ? ` Rate limit resets at ${resetDate.toLocaleTimeString('ja-JP')}.`
+                        ? ` Rate limit resets at ${resetDate.toLocaleString('ja-JP', { timeZone: 'UTC', hour12: false })} (UTC).`
                         : '';
                     if (token) {
                         throw new Error(`API rate limit exceeded.${resetMessage} Please wait or use a different token.`);
