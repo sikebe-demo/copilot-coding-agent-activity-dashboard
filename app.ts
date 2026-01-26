@@ -302,8 +302,8 @@ function displayChart(prs: PullRequest[], fromDate: string, toDate: string): voi
     }
 
     const isDark = document.documentElement.classList.contains('dark');
-    const textColor = isDark ? '#e2e8f0' : '#1e293b';
-    const gridColor = isDark ? '#334155' : '#e2e8f0';
+    const textColor = isDark ? '#f1f5f9' : '#1e293b';
+    const gridColor = isDark ? '#475569' : '#e2e8f0';
 
     chartInstance = new Chart(canvas, {
         type: 'bar',
@@ -402,8 +402,8 @@ function updateChartTheme(): void {
     if (!chartInstance) return;
 
     const isDark = document.documentElement.classList.contains('dark');
-    const textColor = isDark ? '#e2e8f0' : '#1e293b';
-    const gridColor = isDark ? '#334155' : '#e2e8f0';
+    const textColor = isDark ? '#f1f5f9' : '#1e293b';
+    const gridColor = isDark ? '#475569' : '#e2e8f0';
 
     if (chartInstance.options.plugins?.legend?.labels) {
         chartInstance.options.plugins.legend.labels.color = textColor;
