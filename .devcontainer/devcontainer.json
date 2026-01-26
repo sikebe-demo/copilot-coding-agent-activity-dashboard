@@ -3,7 +3,7 @@
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
-      "nodeVersionFile": ".node-version"
+      "version": "22"
     },
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
