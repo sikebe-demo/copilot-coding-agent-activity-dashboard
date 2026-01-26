@@ -89,16 +89,13 @@ To avoid API rate limits and access private repositories:
 
 ## 🔍 Copilot PR Detection
 
-The dashboard identifies PRs created by Copilot Coding Agent using:
+The dashboard identifies PRs created by Copilot Coding Agent by checking if the PR author is the "Copilot" user.
 
-- **Assignee check**: PRs with "Copilot" in the assignees list (primary method)
-- **Author check**: PRs created by the "Copilot" user
+This method is reliable because Copilot Coding Agent PRs are always created by the "Copilot" user account.
 
-These methods are reliable because Copilot Coding Agent PRs are always:
-1. Assigned to "Copilot" automatically
-2. Created by the "Copilot" user account
-
-> **Note**: Branch name prefix (`copilot/`) is not used for detection because any user can create branches with this prefix.
+> **Note**: Branch name prefix (`copilot/`) and assignee checks are not used for detection because:
+> - Any user can create branches with the `copilot/` prefix
+> - Human-authored PRs can be assigned to Copilot for assistance
 
 ## 📁 Project Structure
 

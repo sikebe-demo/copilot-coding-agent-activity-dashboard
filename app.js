@@ -152,23 +152,10 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
 }
 
 function isCopilotPR(pr) {
-    // Primary detection: Check if "Copilot" is in the assignees list
-    // Copilot Coding Agent PRs always have "Copilot" as an assignee
-    // This is the most reliable method as assignees cannot be spoofed by regular users
-    const hasCopilotAssignee = pr.assignees && pr.assignees.some(assignee =>
-        assignee.login?.toLowerCase() === 'copilot'
-    );
-    if (hasCopilotAssignee) {
-        return true;
-    }
-
-    // Secondary detection: Check if PR author is "Copilot"
-    // Copilot Coding Agent PRs are always created by the "Copilot" user
-    if (pr.user?.login?.toLowerCase() === 'copilot') {
-        return true;
-    }
-
-    return false;
+    // Detect PRs created by Copilot Coding Agent
+    // Primary check: PR must be authored by the "Copilot" user
+    // This ensures we only detect PRs actually created by Copilot, not just assigned to it
+    return pr.user?.login?.toLowerCase() === 'copilot';
 }
 
 // Display Functions

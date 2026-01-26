@@ -412,8 +412,9 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     expect(toValue).toBeTruthy();
   });
 
-  test('should detect Copilot PRs by assignee and author', async ({ page }) => {
-    // Test the detection method: PRs with "Copilot" as assignee or author
+  test('should detect Copilot PRs by author only', async ({ page }) => {
+    // Test the detection method: Only PRs authored by "Copilot" are detected
+    // PRs assigned to Copilot but authored by someone else should NOT be detected
     const now = new Date();
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
@@ -423,7 +424,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         {
           id: 1,
           number: 1,
-          title: 'Copilot PR with assignee',
+          title: 'PR authored by Copilot',
           state: 'closed',
           merged_at: fiveDaysAgo.toISOString(),
           created_at: fiveDaysAgo.toISOString(),
@@ -437,13 +438,27 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         {
           id: 2,
           number: 2,
+          title: 'Human PR assigned to Copilot',
+          state: 'open',
+          merged_at: null,
+          created_at: fiveDaysAgo.toISOString(),
+          user: { login: 'human-user' },
+          assignees: [{ login: 'Copilot' }],
+          html_url: 'https://github.com/test/repo/pull/2',
+          body: 'Human created PR assigned to Copilot for help',
+          labels: [],
+          head: { ref: 'feature/human-work' }
+        },
+        {
+          id: 3,
+          number: 3,
           title: 'Regular PR with copilot branch',
           state: 'open',
           merged_at: null,
           created_at: fiveDaysAgo.toISOString(),
           user: { login: 'regular-user' },
           assignees: [{ login: 'regular-user' }],
-          html_url: 'https://github.com/test/repo/pull/2',
+          html_url: 'https://github.com/test/repo/pull/3',
           body: 'Manual changes',
           labels: [],
           head: { ref: 'copilot/manual-branch' }
@@ -463,14 +478,16 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Wait for results
     await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
 
-    // Only the PR with Copilot as assignee/author should be detected
-    // The regular user's PR with copilot/ branch should NOT be detected
+    // Only the PR authored by Copilot should be detected
+    // Human PRs assigned to Copilot should NOT be detected
+    // Regular user PRs with copilot/ branch should NOT be detected
     const totalPRs = page.locator('#totalPRs');
     await expect(totalPRs).toContainText('1');
 
     // Verify the correct PR is shown
     const prList = page.locator('#prList');
-    await expect(prList).toContainText('Copilot PR with assignee');
+    await expect(prList).toContainText('PR authored by Copilot');
+    await expect(prList).not.toContainText('Human PR assigned to Copilot');
     await expect(prList).not.toContainText('Regular PR with copilot branch');
   });
 });
