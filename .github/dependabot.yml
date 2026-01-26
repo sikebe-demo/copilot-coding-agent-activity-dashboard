@@ -26,3 +26,15 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # Dev Containers
+  - package-ecosystem: "devcontainers"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+    groups:
+      # Group all devcontainer feature updates together
+      devcontainers:
+        patterns:
+          - "*"
