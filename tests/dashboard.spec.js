@@ -413,7 +413,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should detect Copilot PRs by author only', async ({ page }) => {
-    // Test the detection method: Only PRs authored by "Copilot" are detected
+    // Test the detection method: Only PRs with author login matching "copilot" (case-insensitive) are detected
     // PRs assigned to Copilot but authored by someone else should NOT be detected
     const now = new Date();
     const fiveDaysAgo = new Date(now);
