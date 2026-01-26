@@ -1026,6 +1026,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Check error message shows authentication error
     const errorMessage = page.locator('#errorMessage');
     await expect(errorMessage).toContainText(/Authentication failed|token.*valid/i);
+  });
+
   test('should sanitize javascript: URLs in html_url to prevent XSS', async ({ page }) => {
     // Test that malicious javascript: protocol URLs are sanitized to "#"
     const now = new Date();
