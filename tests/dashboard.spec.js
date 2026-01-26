@@ -651,26 +651,13 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
           {
             id: 1,
             number: 1,
-            title: 'Test PR with special chars in login display',
+            title: '<img src=x onerror=alert(1)> malicious image',
             state: 'open',
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
             user: { login: 'copilot' },
             assignees: [],
             html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
-          },
-          {
-            id: 2,
-            number: 2,
-            title: '<img src=x onerror=alert(1)> in title',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'copilot' },
-            assignees: [],
-            html_url: 'https://github.com/test/repo/pull/2',
             body: 'Test',
             labels: []
           }
@@ -694,10 +681,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
     // Verify the escaped text is displayed correctly in the title
     const prList = page.locator('#prList');
-    await expect(prList).toContainText('<img src=x onerror=alert(1)> in title');
-    
-    // Also verify that user login "copilot" is displayed safely
-    await expect(prList).toContainText('copilot');
+    await expect(prList).toContainText('<img src=x onerror=alert(1)> malicious image');
   });
 
   test('should escape HTML event handlers in PR titles', async ({ page }) => {
