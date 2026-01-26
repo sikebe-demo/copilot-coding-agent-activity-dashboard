@@ -156,7 +156,7 @@ function isCopilotPR(pr) {
         'github-copilot',
         'copilot-workspace-helper',
         'github-copilot-preview[bot]'
-    ];
+    ].map(login => login.toLowerCase());
     const login = pr.user?.login?.toLowerCase() || '';
     const isCopilotUser = copilotLogins.includes(login);
 
