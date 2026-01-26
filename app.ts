@@ -364,6 +364,7 @@ async function fetchCopilotPRsWithSearchAPI(
     const perPage = 100; // Search API max is 100
     let rateLimitInfo: RateLimitInfo | null = null;
     let totalCount = 0;
+    let incompleteResults = false;
 
     while (true) {
         const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&sort=created&order=desc`;
@@ -406,9 +407,10 @@ async function fetchCopilotPRsWithSearchAPI(
         const searchResponse: SearchResponse = await response.json();
         const items = searchResponse.items;
         
-        // Store total_count from first response
+        // Store total_count and incomplete_results from first response
         if (page === 1) {
             totalCount = searchResponse.total_count;
+            incompleteResults = searchResponse.incomplete_results;
         }
 
         if (items.length === 0) break;
@@ -438,13 +440,21 @@ async function fetchCopilotPRsWithSearchAPI(
             if (totalCount > 1000) {
                 throw new Error(
                     `Results truncated: Found ${totalCount} PRs, but only the first 1000 could be fetched due to GitHub Search API limitations. ` +
-                    `Up to 1000 PRs were retrieved but are not returned here because the result set is incomplete. Please narrow your date range to see complete results.`
+                    `The retrieved results cannot be displayed because the result set is incomplete. Please narrow your date range to see complete results.`
                 );
             }
             break;
         }
 
         page++;
+    }
+
+    // Check if GitHub API indicated incomplete results (e.g., due to timeouts)
+    if (incompleteResults) {
+        throw new Error(
+            'Search results may be incomplete due to GitHub API limitations (timeouts or other issues). ' +
+            'Please try again or narrow your date range for more reliable results.'
+        );
     }
 
     return { prs: allPRs, rateLimitInfo };
