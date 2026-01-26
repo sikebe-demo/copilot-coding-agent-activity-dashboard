@@ -143,16 +143,15 @@ async function handleFormSubmit(e: Event): Promise<void> {
     }
 }
 
-// Validate GitHub owner/repo names to prevent path traversal attacks
-// GitHub naming rules: letters, numbers, hyphens, underscores, and periods
-// Explicitly reject "." and ".." which could cause path traversal
+// Validate GitHub owner/repo segments using a conservative allowlist to prevent path traversal or injection
+// NOTE: This is a *security* filter for safe path segments, not a complete implementation of GitHub's naming rules.
+// It rejects "." and ".." and only allows letters, numbers, hyphens, underscores, and periods.
 function isValidGitHubName(name: string): boolean {
     // Reject empty names, "." and ".." for path traversal prevention
     if (!name || name === '.' || name === '..') {
         return false;
     }
     // Only allow alphanumeric characters, hyphens, underscores, and periods
-    // This matches GitHub's naming conventions
     const validPattern = /^[A-Za-z0-9_.-]+$/;
     return validPattern.test(name);
 }
