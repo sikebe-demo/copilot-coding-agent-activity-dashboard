@@ -890,4 +890,84 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     expect(titleText?.trim()).toBe('');
   });
 
+  test('should show rate limit error with reset time when X-RateLimit-Remaining is 0', async ({ page }) => {
+    // Mock GitHub API with rate limit error
+    const resetTimestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(resetTimestamp),
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': 'X-RateLimit-Remaining, X-RateLimit-Reset'
+        },
+        body: JSON.stringify({ message: 'API rate limit exceeded' })
+      });
+    });
+
+    // Fill form and submit
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for error
+    await page.waitForSelector('#error', { state: 'visible' });
+
+    // Check error message contains rate limit info
+    const errorMessage = page.locator('#errorMessage');
+    await expect(errorMessage).toContainText(/rate limit exceeded/i);
+    await expect(errorMessage).toContainText(/Personal Access Token|PAT/i);
+  });
+
+  test('should show permission error for 403 when X-RateLimit-Remaining is not 0', async ({ page }) => {
+    // Mock GitHub API with permission error (403 but not rate limited)
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-RateLimit-Remaining': '4500',
+          'X-RateLimit-Reset': String(Math.floor(Date.now() / 1000) + 3600),
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': 'X-RateLimit-Remaining, X-RateLimit-Reset'
+        },
+        body: JSON.stringify({ message: 'Resource not accessible by integration' })
+      });
+    });
+
+    // Fill form and submit
+    await page.fill('#repoInput', 'test/private-repo');
+    await page.click('#searchButton');
+
+    // Wait for error
+    await page.waitForSelector('#error', { state: 'visible' });
+
+    // Check error message shows permission error
+    const errorMessage = page.locator('#errorMessage');
+    await expect(errorMessage).toContainText(/Access forbidden|permission/i);
+  });
+
+  test('should show authentication error for 401', async ({ page }) => {
+    // Mock GitHub API with authentication error
+    await page.route('https://api.github.com/**', route => {
+      route.fulfill({
+        status: 401,
+        body: JSON.stringify({ message: 'Bad credentials' })
+      });
+    });
+
+    // Fill form and submit with invalid token
+    await page.fill('#repoInput', 'test/repo');
+    await page.fill('#tokenInput', 'invalid-token');
+    await page.click('#searchButton');
+
+    // Wait for error
+    await page.waitForSelector('#error', { state: 'visible' });
+
+    // Check error message shows authentication error
+    const errorMessage = page.locator('#errorMessage');
+    await expect(errorMessage).toContainText(/Authentication failed|token.*valid/i);
+  });
+
 });

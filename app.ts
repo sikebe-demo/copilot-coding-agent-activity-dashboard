@@ -160,7 +160,25 @@ async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, to
             if (response.status === 404) {
                 throw new Error('Repository not found');
             } else if (response.status === 403) {
-                throw new Error('API rate limit reached. Please use a token');
+                // Check if it's actually a rate limit error by inspecting the header
+                const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
+                if (rateLimitRemaining === '0') {
+                    const resetTime = response.headers.get('X-RateLimit-Reset');
+                    const resetDate = resetTime ? new Date(parseInt(resetTime) * 1000) : null;
+                    const resetMessage = resetDate
+                        ? ` Rate limit resets at ${resetDate.toLocaleTimeString()}.`
+                        : '';
+                    if (token) {
+                        throw new Error(`API rate limit exceeded.${resetMessage} Please wait or use a different token.`);
+                    } else {
+                        throw new Error(`API rate limit exceeded.${resetMessage} Please use a GitHub Personal Access Token (PAT) for higher limits.`);
+                    }
+                } else {
+                    // 403 but not rate limited - likely a permission issue
+                    throw new Error('Access forbidden. Please check that your token has the required permissions (repo scope) or that the repository is accessible.');
+                }
+            } else if (response.status === 401) {
+                throw new Error('Authentication failed. Please check that your GitHub token is valid.');
             } else {
                 throw new Error(`GitHub API Error: ${response.status}`);
             }
