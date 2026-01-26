@@ -198,7 +198,8 @@ function isValidGitHubName(name: string): boolean {
 
 // Cache Functions
 function getCacheKey(owner: string, repo: string, fromDate: string, toDate: string): string {
-    return `${CACHE_KEY_PREFIX}${owner}_${repo}_${fromDate}_${toDate}`;
+    const payload = { owner, repo, fromDate, toDate };
+    return `${CACHE_KEY_PREFIX}${JSON.stringify(payload)}`;
 }
 
 function getFromCache(cacheKey: string): CacheEntry | null {
