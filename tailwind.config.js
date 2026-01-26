@@ -2,7 +2,7 @@
 export default {
   content: [
     "./index.html",
-    "./app.js",
+    "./app.ts",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   darkMode: 'class',
