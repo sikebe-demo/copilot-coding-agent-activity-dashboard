@@ -91,7 +91,7 @@ To avoid API rate limits and access private repositories:
 
 The dashboard identifies PRs created by Copilot Coding Agent by checking if the PR author (`pr.user.login`) matches `copilot` (case-insensitive).
 
-This method is reliable because PRs created by Copilot Coding Agent are authored by the Copilot user account (login: `Copilot`).
+This method is reliable because PRs created by Copilot Coding Agent are authored by the Copilot user account (canonical login: `copilot`, though GitHub may display it with different casing).
 
 > **Note**: Branch name prefix (`copilot/`) and assignee checks are not used for detection because:
 > - Any user can create branches with the `copilot/` prefix
