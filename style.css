@@ -15,42 +15,42 @@
   .glass-card {
     @apply bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-white/20 dark:border-slate-800/20 shadow-xl;
   }
-  
+
   /* Gradient Text */
   .gradient-text {
     @apply bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent;
   }
-  
+
   /* Animated Button */
   .btn-animated {
     @apply relative overflow-hidden;
   }
-  
+
   .btn-animated::before {
     content: '';
     @apply absolute top-0 left-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent;
     transform: translateX(-100%);
     transition: transform 0.6s;
   }
-  
+
   .btn-animated:hover::before {
     transform: translateX(100%);
   }
-  
+
   /* Stat Card Animation */
   .stat-card {
     @apply transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl;
   }
-  
+
   .stat-card::before {
     content: '';
     @apply absolute top-0 left-0 w-full h-1 bg-gradient-to-r opacity-0 transition-opacity duration-300;
   }
-  
+
   .stat-card:hover::before {
     @apply opacity-100;
   }
-  
+
   /* PR Item Hover */
   .pr-item {
     @apply transition-all duration-300 hover:translate-x-2 hover:shadow-lg;
@@ -62,7 +62,7 @@
   .animate-fade-in {
     animation: fadeIn 0.6s ease-out;
   }
-  
+
   @keyframes fadeIn {
     from {
       opacity: 0;
@@ -73,11 +73,11 @@
       transform: translateY(0);
     }
   }
-  
+
   .animate-slide-in {
     animation: slideIn 0.4s ease-out;
   }
-  
+
   @keyframes slideIn {
     from {
       opacity: 0;
@@ -88,24 +88,24 @@
       transform: translateX(0);
     }
   }
-  
+
   /* Background Pattern */
   .bg-pattern {
-    background-image: 
+    background-image:
       linear-gradient(to right, rgba(99, 102, 241, 0.03) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
     background-size: 40px 40px;
   }
-  
+
   /* Glow Effect */
   .glow {
     box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
   }
-  
+
   .glow-success {
     box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
   }
-  
+
   .glow-error {
     box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
   }

@@ -12,19 +12,19 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeTheme() {
     const themeToggle = document.getElementById('themeToggle');
     const savedTheme = localStorage.getItem('theme') || 'light';
-    
+
     if (savedTheme === 'dark') {
         document.documentElement.classList.add('dark');
         document.documentElement.setAttribute('data-theme', 'dark');
     }
-    
+
     themeToggle?.addEventListener('click', toggleTheme);
 }
 
 function toggleTheme() {
     const html = document.documentElement;
     const isDark = html.classList.contains('dark');
-    
+
     if (isDark) {
         html.classList.remove('dark');
         html.setAttribute('data-theme', 'light');
@@ -34,7 +34,7 @@ function toggleTheme() {
         html.setAttribute('data-theme', 'dark');
         localStorage.setItem('theme', 'dark');
     }
-    
+
     // Update chart if it exists
     if (chartInstance) {
         updateChartTheme();
@@ -46,10 +46,10 @@ function setDefaultDates() {
     const toDate = new Date();
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - 30);
-    
+
     const toInput = document.getElementById('toDate');
     const fromInput = document.getElementById('fromDate');
-    
+
     if (toInput) toInput.valueAsDate = toDate;
     if (fromInput) fromInput.valueAsDate = fromDate;
 }
@@ -62,23 +62,23 @@ function initializeForm() {
 
 async function handleFormSubmit(e) {
     e.preventDefault();
-    
+
     const repoInput = document.getElementById('repoInput').value.trim();
     const fromDate = document.getElementById('fromDate').value;
     const toDate = document.getElementById('toDate').value;
     const token = document.getElementById('tokenInput').value.trim();
-    
+
     if (!repoInput.includes('/')) {
         showError('Please enter repository in "owner/repo" format');
         return;
     }
-    
+
     const [owner, repo] = repoInput.split('/');
-    
+
     showLoading();
     hideError();
     hideResults();
-    
+
     try {
         const prs = await fetchCopilotPRs(owner, repo, fromDate, toDate, token);
         displayResults(prs, owner, repo);
@@ -94,20 +94,20 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
     const headers = {
         'Accept': 'application/vnd.github.v3+json'
     };
-    
+
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
-    
+
     const allPRs = [];
     let page = 1;
     const perPage = 100;
-    
+
     while (true) {
         const url = `https://api.github.com/repos/${owner}/${repo}/pulls?state=all&per_page=${perPage}&page=${page}&sort=created&direction=desc`;
-        
+
         const response = await fetch(url, { headers });
-        
+
         if (!response.ok) {
             if (response.status === 404) {
                 throw new Error('Repository not found');
@@ -117,47 +117,47 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
                 throw new Error(`GitHub API Error: ${response.status}`);
             }
         }
-        
+
         const prs = await response.json();
-        
+
         if (prs.length === 0) break;
-        
+
         // Filter PRs by date range
         const fromDateObj = new Date(fromDate);
         const toDateObj = new Date(toDate);
         toDateObj.setHours(23, 59, 59, 999);
-        
+
         const filteredPRs = prs.filter(pr => {
             const createdAt = new Date(pr.created_at);
             return createdAt >= fromDateObj && createdAt <= toDateObj;
         });
-        
+
         allPRs.push(...filteredPRs);
-        
+
         // If the oldest PR in this batch is before our date range, stop fetching
         if (prs.length > 0 && new Date(prs[prs.length - 1].created_at) < fromDateObj) {
             break;
         }
-        
+
         // If we got fewer PRs than requested, we've reached the end
         if (prs.length < perPage) break;
-        
+
         page++;
     }
-    
+
     // Filter for Copilot-created PRs
     const copilotPRs = allPRs.filter(pr => isCopilotPR(pr));
-    
+
     return copilotPRs;
 }
 
 function isCopilotPR(pr) {
     // Check if PR was created by copilot
     const copilotUsers = ['copilot-workspace-helper', 'github-copilot', 'copilot'];
-    const isCopilotUser = copilotUsers.some(user => 
+    const isCopilotUser = copilotUsers.some(user =>
         pr.user.login.toLowerCase().includes(user)
     );
-    
+
     // Check PR title/body for copilot indicators
     const copilotIndicators = [
         'copilot',
@@ -166,17 +166,17 @@ function isCopilotPR(pr) {
         'workspace ai',
         'copilot workspace'
     ];
-    
+
     const titleBody = `${pr.title} ${pr.body || ''}`.toLowerCase();
-    const hasIndicator = copilotIndicators.some(indicator => 
+    const hasIndicator = copilotIndicators.some(indicator =>
         titleBody.includes(indicator)
     );
-    
+
     // Check labels
-    const hasLabel = pr.labels && pr.labels.some(label => 
+    const hasLabel = pr.labels && pr.labels.some(label =>
         label.name.toLowerCase().includes('copilot')
     );
-    
+
     return isCopilotUser || hasIndicator || hasLabel;
 }
 
@@ -185,31 +185,31 @@ function displayResults(prs, owner, repo) {
     const merged = prs.filter(pr => pr.merged_at !== null);
     const closed = prs.filter(pr => pr.state === 'closed' && pr.merged_at === null);
     const open = prs.filter(pr => pr.state === 'open');
-    
-    const mergeRate = prs.length > 0 
-        ? Math.round((merged.length / prs.length) * 100) 
+
+    const mergeRate = prs.length > 0
+        ? Math.round((merged.length / prs.length) * 100)
         : 0;
-    
+
     // Update summary cards with animation
     animateValue('totalPRs', 0, prs.length, 1000);
     animateValue('mergedPRs', 0, merged.length, 1000);
     animateValue('closedPRs', 0, closed.length, 1000);
     animateValue('openPRs', 0, open.length, 1000);
-    
+
     // Update merge rate with animation
     document.getElementById('mergeRateValue').textContent = `${mergeRate}%`;
     document.getElementById('mergeRateText').textContent = `${mergeRate}%`;
-    
+
     setTimeout(() => {
         document.getElementById('mergeRateBar').style.width = `${mergeRate}%`;
     }, 100);
-    
+
     // Display chart
     displayChart(prs);
-    
+
     // Display PR list
     displayPRList(prs);
-    
+
     showResults();
 }
 
@@ -217,11 +217,11 @@ function displayResults(prs, owner, repo) {
 function animateValue(id, start, end, duration) {
     const element = document.getElementById(id);
     if (!element) return;
-    
+
     const range = end - start;
     const increment = range / (duration / 16);
     let current = start;
-    
+
     const timer = setInterval(() => {
         current += increment;
         if (current >= end) {
@@ -238,13 +238,13 @@ let chartInstance = null;
 function displayChart(prs) {
     // Group PRs by date
     const prsByDate = {};
-    
+
     prs.forEach(pr => {
         const date = new Date(pr.created_at).toISOString().split('T')[0];
         if (!prsByDate[date]) {
             prsByDate[date] = { merged: 0, closed: 0, open: 0 };
         }
-        
+
         if (pr.merged_at) {
             prsByDate[date].merged++;
         } else if (pr.state === 'closed') {
@@ -253,32 +253,32 @@ function displayChart(prs) {
             prsByDate[date].open++;
         }
     });
-    
+
     // Sort dates
     const dates = Object.keys(prsByDate).sort();
     const mergedData = dates.map(date => prsByDate[date].merged);
     const closedData = dates.map(date => prsByDate[date].closed);
     const openData = dates.map(date => prsByDate[date].open);
-    
+
     const chartContainer = document.getElementById('prChart');
     if (!chartContainer) return;
-    
+
     // Create canvas if it doesn't exist
     let canvas = chartContainer.querySelector('canvas');
     if (!canvas) {
         canvas = document.createElement('canvas');
         chartContainer.appendChild(canvas);
     }
-    
+
     // Destroy previous chart if exists
     if (chartInstance) {
         chartInstance.destroy();
     }
-    
+
     const isDark = document.documentElement.classList.contains('dark');
     const textColor = isDark ? '#e2e8f0' : '#1e293b';
     const gridColor = isDark ? '#334155' : '#e2e8f0';
-    
+
     chartInstance = new Chart(canvas, {
         type: 'bar',
         data: {
@@ -376,11 +376,11 @@ function displayChart(prs) {
 
 function updateChartTheme() {
     if (!chartInstance) return;
-    
+
     const isDark = document.documentElement.classList.contains('dark');
     const textColor = isDark ? '#e2e8f0' : '#1e293b';
     const gridColor = isDark ? '#334155' : '#e2e8f0';
-    
+
     chartInstance.options.plugins.legend.labels.color = textColor;
     chartInstance.options.plugins.tooltip.backgroundColor = isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)';
     chartInstance.options.plugins.tooltip.titleColor = textColor;
@@ -390,16 +390,16 @@ function updateChartTheme() {
     chartInstance.options.scales.x.grid.color = gridColor;
     chartInstance.options.scales.y.ticks.color = textColor;
     chartInstance.options.scales.y.grid.color = gridColor;
-    
+
     chartInstance.update();
 }
 
 function displayPRList(prs) {
     const prList = document.getElementById('prList');
     if (!prList) return;
-    
+
     prList.innerHTML = '';
-    
+
     if (prs.length === 0) {
         prList.innerHTML = `
             <div class="text-center py-16">
@@ -413,12 +413,12 @@ function displayPRList(prs) {
         `;
         return;
     }
-    
+
     // Sort PRs by created date (newest first)
-    const sortedPRs = [...prs].sort((a, b) => 
+    const sortedPRs = [...prs].sort((a, b) =>
         new Date(b.created_at) - new Date(a.created_at)
     );
-    
+
     sortedPRs.forEach((pr, index) => {
         const createdDate = new Date(pr.created_at).toLocaleDateString('ja-JP');
         const status = pr.merged_at ? 'merged' : pr.state;
@@ -439,9 +439,9 @@ function displayPRList(prs) {
                 text: 'Open'
             }
         };
-        
+
         const config = statusConfig[status];
-        
+
         const prElement = document.createElement('div');
         prElement.className = 'pr-item p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 animate-slide-in';
         prElement.style.animationDelay = `${index * 0.05}s`;
@@ -454,7 +454,7 @@ function displayPRList(prs) {
                     </span>
                     <span class="text-xs text-slate-500 dark:text-slate-400">#${pr.number}</span>
                 </div>
-                <a href="${pr.html_url}" target="_blank" rel="noopener" 
+                <a href="${pr.html_url}" target="_blank" rel="noopener"
                    class="flex-shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                    title="GitHubで開く">
                     <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
