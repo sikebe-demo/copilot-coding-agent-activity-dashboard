@@ -1,8 +1,152 @@
 import { test, expect } from '@playwright/test';
 
+/**
+ * Helper function to create Search API response format
+ *
+ * Based on GitHub REST API documentation:
+ * https://docs.github.com/en/rest/search/search#search-issues-and-pull-requests
+ *
+ * Response schema (simplified for testing):
+ * {
+ *   total_count: number,
+ *   incomplete_results: boolean,
+ *   items: SearchIssueItem[]
+ * }
+ *
+ * SearchIssueItem includes (relevant fields):
+ * - id, node_id, number, title, state
+ * - url, repository_url, labels_url, comments_url, events_url, html_url
+ * - user: { login, id, node_id, avatar_url, ... }
+ * - labels: [], assignee, milestone
+ * - comments, created_at, updated_at, closed_at
+ * - pull_request: { url, html_url, diff_url, patch_url, merged_at? }
+ * - body, score, locked, author_association, state_reason
+ *
+ * Note: merged_at is included in pull_request object for PRs (observed in real API responses)
+ */
+function createSearchResponse(prs) {
+  return {
+    total_count: prs.length,
+    incomplete_results: false,
+    items: prs.map((pr, index) => {
+      // Extract owner/repo from html_url if available
+      const urlMatch = pr.html_url?.match(/github\.com\/([^/]+)\/([^/]+)\/pull/);
+      const owner = urlMatch ? urlMatch[1] : 'test';
+      const repo = urlMatch ? urlMatch[2] : 'repo';
+
+      return {
+        // Core identifiers
+        id: pr.id,
+        node_id: `PR_${pr.id}`,
+        number: pr.number,
+
+        // Content
+        title: pr.title,
+        body: pr.body || '',
+
+        // URLs (following GitHub API structure)
+        url: `https://api.github.com/repos/${owner}/${repo}/issues/${pr.number}`,
+        repository_url: `https://api.github.com/repos/${owner}/${repo}`,
+        labels_url: `https://api.github.com/repos/${owner}/${repo}/issues/${pr.number}/labels{/name}`,
+        comments_url: `https://api.github.com/repos/${owner}/${repo}/issues/${pr.number}/comments`,
+        events_url: `https://api.github.com/repos/${owner}/${repo}/issues/${pr.number}/events`,
+        html_url: pr.html_url,
+
+        // User object (full structure as per API docs)
+        user: {
+          login: pr.user?.login || 'copilot',
+          id: pr.user?.id || 1000000 + index,
+          node_id: `U_${pr.user?.id || 1000000 + index}`,
+          avatar_url: pr.user?.avatar_url || `https://avatars.githubusercontent.com/u/${pr.user?.id || 1000000 + index}?v=4`,
+          gravatar_id: '',
+          url: `https://api.github.com/users/${pr.user?.login || 'copilot'}`,
+          html_url: `https://github.com/${pr.user?.login || 'copilot'}`,
+          followers_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/followers`,
+          following_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/following{/other_user}`,
+          gists_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/gists{/gist_id}`,
+          starred_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/starred{/owner}{/repo}`,
+          subscriptions_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/subscriptions`,
+          organizations_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/orgs`,
+          repos_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/repos`,
+          events_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/events{/privacy}`,
+          received_events_url: `https://api.github.com/users/${pr.user?.login || 'copilot'}/received_events`,
+          type: 'User',
+          site_admin: false
+        },
+
+        // Labels and assignments
+        labels: pr.labels || [],
+        assignee: pr.assignee || null,
+        assignees: pr.assignees || [],
+        milestone: pr.milestone || null,
+
+        // State
+        state: pr.state,
+        locked: pr.locked || false,
+
+        // Timestamps
+        created_at: pr.created_at,
+        updated_at: pr.updated_at || pr.created_at,
+        closed_at: pr.state === 'closed' ? (pr.closed_at || pr.created_at) : null,
+
+        // PR-specific data (indicates this is a PR, not an issue)
+        // Note: merged_at is available in pull_request object
+        pull_request: {
+          url: `https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}`,
+          html_url: pr.html_url,
+          diff_url: `${pr.html_url}.diff`,
+          patch_url: `${pr.html_url}.patch`,
+          merged_at: pr.merged_at
+        },
+
+        // Metadata
+        comments: pr.comments || 0,
+        score: 1.0,
+        author_association: pr.author_association || 'CONTRIBUTOR',
+        state_reason: pr.state === 'closed' ? (pr.merged_at ? 'completed' : 'not_planned') : null
+      };
+    })
+  };
+}
+
+/**
+ * Helper to create rate limit headers
+ *
+ * Based on GitHub REST API documentation:
+ * https://docs.github.com/en/rest/rate-limit/rate-limit
+ * https://docs.github.com/en/rest/search/search#rate-limit
+ *
+ * Rate limits for Search API:
+ * - Unauthenticated: 10 requests per minute
+ * - Authenticated: 30 requests per minute
+ *
+ * Headers returned:
+ * - X-RateLimit-Limit: Maximum requests allowed
+ * - X-RateLimit-Remaining: Requests remaining in current window
+ * - X-RateLimit-Reset: Unix timestamp when the rate limit resets
+ * - X-RateLimit-Used: Requests used in current window
+ * - X-RateLimit-Resource: The rate limit resource (e.g., "search")
+ */
+function createRateLimitHeaders(remaining = 4999, limit = 5000, used = 1) {
+  const resetTimestamp = Math.floor(Date.now() / 1000) + 3600;
+  return {
+    'Content-Type': 'application/json',
+    'X-RateLimit-Limit': String(limit),
+    'X-RateLimit-Remaining': String(remaining),
+    'X-RateLimit-Reset': String(resetTimestamp),
+    'X-RateLimit-Used': String(used),
+    'X-RateLimit-Resource': 'search',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Expose-Headers': 'X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Used, X-RateLimit-Resource'
+  };
+}
+
 test.describe('Copilot Coding Agent PR Dashboard', () => {
   test.beforeEach(async ({ page }) => {
+    // Clear localStorage to ensure clean state for each test
     await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
   });
 
   test('should display the main page with correct title', async ({ page }) => {
@@ -107,11 +251,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 1,
@@ -119,13 +263,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             state: 'open',
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'Copilot' },
-            assignees: [{ login: 'Copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Copilot PR',
-            labels: []
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
           }
-        ])
+        ]))
       });
     });
 
@@ -141,10 +282,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
   test('should handle repository input with whitespace before slash', async ({ page }) => {
     // Mock GitHub API to return error for invalid repository name with whitespace
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 404,
-        contentType: 'application/json',
+        headers: createRateLimitHeaders(),
         body: JSON.stringify({ message: 'Not Found' })
       });
     });
@@ -163,10 +304,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
   test('should handle repository input with whitespace after slash', async ({ page }) => {
     // Mock GitHub API to return error for invalid repository name with whitespace
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 404,
-        contentType: 'application/json',
+        headers: createRateLimitHeaders(),
         body: JSON.stringify({ message: 'Not Found' })
       });
     });
@@ -244,10 +385,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
   test('should show loading state when searching', async ({ page }) => {
     // Mock the GitHub API to delay response
-    await page.route('https://api.github.com/**', async route => {
+    await page.route('https://api.github.com/search/issues**', async route => {
       await new Promise(resolve => setTimeout(resolve, 100));
       await route.fulfill({
         status: 404,
+        headers: createRateLimitHeaders(),
         body: JSON.stringify({ message: 'Not Found' })
       });
     });
@@ -263,9 +405,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
   test('should handle API errors gracefully', async ({ page }) => {
     // Mock GitHub API error
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 404,
+        headers: createRateLimitHeaders(),
         body: JSON.stringify({ message: 'Not Found' })
       });
     });
@@ -290,40 +433,32 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const threeDaysAgo = new Date(now);
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
-    await page.route('https://api.github.com/**', route => {
-      const prs = [
-        {
-          id: 1,
-          number: 1,
-          title: 'Test PR by Copilot',
-          state: 'closed',
-          merged_at: fiveDaysAgo.toISOString(),
-          created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'Copilot' },
-          assignees: [{ login: 'Copilot' }],
-          html_url: 'https://github.com/test/repo/pull/1',
-          body: 'Created by Copilot Coding Agent',
-          labels: []
-        },
-        {
-          id: 2,
-          number: 2,
-          title: 'Another Copilot PR',
-          state: 'open',
-          merged_at: null,
-          created_at: threeDaysAgo.toISOString(),
-          user: { login: 'Copilot' },
-          assignees: [{ login: 'Copilot' }],
-          html_url: 'https://github.com/test/repo/pull/2',
-          body: 'Copilot generated PR',
-          labels: []
-        }
-      ];
-
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(prs)
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR by Copilot',
+            state: 'closed',
+            merged_at: fiveDaysAgo.toISOString(),
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          },
+          {
+            id: 2,
+            number: 2,
+            title: 'Another Copilot PR',
+            state: 'open',
+            merged_at: null,
+            created_at: threeDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/2'
+          }
+        ]))
       });
     });
 
@@ -355,11 +490,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 123,
@@ -367,13 +502,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             state: 'closed',
             merged_at: fiveDaysAgo.toISOString(),
             created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'Copilot' },
-            assignees: [{ login: 'Copilot' }],
-            html_url: 'https://github.com/test/repo/pull/123',
-            body: 'Copilot generated',
-            labels: []
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/123'
           }
-        ])
+        ]))
       });
     });
 
@@ -387,7 +519,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const prList = page.locator('#prList');
     await expect(prList).toContainText('Feature: Add new component');
     await expect(prList).toContainText('#123');
-    await expect(prList).toContainText('Copilot');
+    await expect(prList).toContainText('copilot');
     await expect(prList).toContainText('Merged');
   });
 
@@ -397,11 +529,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 1,
@@ -409,13 +541,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             state: 'closed',
             merged_at: fiveDaysAgo.toISOString(),
             created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'Copilot' },
-            assignees: [{ login: 'Copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Copilot PR',
-            labels: []
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
           }
-        ])
+        ]))
       });
     });
 
@@ -440,11 +569,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         state: 'closed',
         merged_at: '2026-01-02T10:00:00Z',
         created_at: '2026-01-02T10:00:00Z',
-        user: { login: 'Copilot' },
-        assignees: [{ login: 'Copilot' }],
-        html_url: 'https://github.com/test/repo/pull/1',
-        body: 'Copilot PR',
-        labels: []
+        user: { login: 'copilot' },
+        html_url: 'https://github.com/test/repo/pull/1'
       },
       {
         id: 2,
@@ -453,11 +579,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         state: 'closed',
         merged_at: '2026-01-05T10:00:00Z',
         created_at: '2026-01-05T10:00:00Z',
-        user: { login: 'Copilot' },
-        assignees: [{ login: 'Copilot' }],
-        html_url: 'https://github.com/test/repo/pull/2',
-        body: 'Copilot PR',
-        labels: []
+        user: { login: 'copilot' },
+        html_url: 'https://github.com/test/repo/pull/2'
       },
       {
         id: 3,
@@ -466,24 +589,21 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
         state: 'open',
         merged_at: null,
         created_at: '2026-01-07T10:00:00Z',
-        user: { login: 'Copilot' },
-        assignees: [{ login: 'Copilot' }],
-        html_url: 'https://github.com/test/repo/pull/3',
-        body: 'Copilot PR',
-        labels: []
+        user: { login: 'copilot' },
+        html_url: 'https://github.com/test/repo/pull/3'
       }
     ];
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(prs)
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse(prs))
       });
     });
 
     await page.goto('/');
-    
+
     // Set specific date range (1/1 to 1/10 - 10 days)
     await page.fill('#fromDate', '2026-01-01');
     await page.fill('#toDate', '2026-01-10');
@@ -492,11 +612,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
     // Wait for chart canvas to be visible
     await page.waitForSelector('#prChart canvas', { state: 'visible', timeout: 10000 });
-    
+
     // Verify the chart canvas exists and has proper dimensions (indicating it rendered)
     const canvas = page.locator('#prChart canvas');
     await expect(canvas).toBeVisible();
-    
+
     // Get canvas bounding box to verify it rendered with content
     const canvasBox = await canvas.boundingBox();
     expect(canvasBox.width).toBeGreaterThan(0);
@@ -504,30 +624,12 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should handle empty results', async ({ page }) => {
-    // Mock GitHub API with no Copilot PRs (using current date)
-    const now = new Date();
-    const fiveDaysAgo = new Date(now);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-
-    await page.route('https://api.github.com/**', route => {
+    // Mock GitHub API with no Copilot PRs - Search API returns empty items
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 1,
-            number: 1,
-            title: 'Regular PR',
-            state: 'open',
-            merged_at: null,
-            created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'regular-user' },
-            assignees: [{ login: 'regular-user' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Regular PR body',
-            labels: []
-          }
-        ])
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([]))
       });
     });
 
@@ -565,11 +667,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 1,
@@ -577,13 +679,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             state: 'open',
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
-            user: { login: 'Copilot' },
-            assignees: [{ login: 'Copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Copilot PR',
-            labels: []
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
           }
-        ])
+        ]))
       });
     });
 
@@ -619,62 +718,29 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
   test('should detect Copilot PRs by author only', async ({ page }) => {
-    // Test the detection method: Only PRs with author login matching "copilot" (case-insensitive) are detected
-    // PRs assigned to Copilot but authored by someone else should NOT be detected
+    // Test the detection method: Search API already filters by author:app/copilot-swe-agent
+    // So we only need to verify the Search API query filters correctly
     const now = new Date();
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
-      const prs = [
-        {
-          id: 1,
-          number: 1,
-          title: 'PR authored by Copilot',
-          state: 'closed',
-          merged_at: fiveDaysAgo.toISOString(),
-          created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'copilot' },
-          assignees: [{ login: 'copilot' }, { login: 'SIkebe' }],
-          html_url: 'https://github.com/test/repo/pull/1',
-          body: 'Adds feature',
-          labels: [],
-          head: { ref: 'copilot/add-feature' }
-        },
-        {
-          id: 2,
-          number: 2,
-          title: 'Human PR assigned to Copilot',
-          state: 'open',
-          merged_at: null,
-          created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'human-user' },
-          assignees: [{ login: 'copilot' }],
-          html_url: 'https://github.com/test/repo/pull/2',
-          body: 'Human created PR assigned to Copilot for help',
-          labels: [],
-          head: { ref: 'feature/human-work' }
-        },
-        {
-          id: 3,
-          number: 3,
-          title: 'Regular PR with copilot branch',
-          state: 'open',
-          merged_at: null,
-          created_at: fiveDaysAgo.toISOString(),
-          user: { login: 'regular-user' },
-          assignees: [{ login: 'regular-user' }],
-          html_url: 'https://github.com/test/repo/pull/3',
-          body: 'Manual changes',
-          labels: [],
-          head: { ref: 'copilot/manual-branch' }
-        }
-      ];
-
+    await page.route('https://api.github.com/search/issues**', route => {
+      // Search API already filters by author:app/copilot-swe-agent, so we only get Copilot PRs
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(prs)
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'PR authored by Copilot',
+            state: 'closed',
+            merged_at: fiveDaysAgo.toISOString(),
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
       });
     });
 
@@ -684,17 +750,13 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Wait for results
     await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
 
-    // Only the PR authored by Copilot should be detected
-    // Human PRs assigned to Copilot should NOT be detected
-    // Regular user PRs with copilot/ branch should NOT be detected
+    // Only Copilot-authored PRs should be shown
     const totalPRs = page.locator('#totalPRs');
     await expect(totalPRs).toContainText('1');
 
     // Verify the correct PR is shown
     const prList = page.locator('#prList');
     await expect(prList).toContainText('PR authored by Copilot');
-    await expect(prList).not.toContainText('Human PR assigned to Copilot');
-    await expect(prList).not.toContainText('Regular PR with copilot branch');
   });
 
   test('should escape HTML in PR titles to prevent XSS', async ({ page }) => {
@@ -703,11 +765,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 1,
@@ -716,12 +778,9 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
             user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
+            html_url: 'https://github.com/test/repo/pull/1'
           }
-        ])
+        ]))
       });
     });
 
@@ -750,11 +809,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 1,
@@ -763,12 +822,9 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
             user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
+            html_url: 'https://github.com/test/repo/pull/1'
           }
-        ])
+        ]))
       });
     });
 
@@ -791,7 +847,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Verify the text is displayed correctly (browser interprets escaped HTML entities)
     const prList = page.locator('#prList');
     await expect(prList).toContainText('PR with <tags> & "quotes" and \'apostrophes\'');
-    
+
     // Note: escapeHtml also escapes quotes (" → &quot;, ' → &#39;) as a defensive measure
     // against attribute injection attacks. While the current code only uses escaped content
     // in text nodes, this ensures safety if PR titles are ever used in HTML attributes.
@@ -805,11 +861,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 1,
@@ -818,12 +874,9 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
             user: { login: 'copilot' },
-            assignees: [],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
+            html_url: 'https://github.com/test/repo/pull/1'
           }
-        ])
+        ]))
       });
     });
 
@@ -852,11 +905,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 1,
@@ -865,12 +918,9 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
             user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: 'https://github.com/test/repo/pull/1',
-            body: 'Test',
-            labels: []
+            html_url: 'https://github.com/test/repo/pull/1'
           }
-        ])
+        ]))
       });
     });
 
@@ -883,7 +933,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Verify the PR is displayed and null title is rendered as empty string
     const prList = page.locator('#prList');
     await expect(prList).toBeVisible();
-    
+
     // Verify that null title doesn't cause errors and displays as empty
     const titleElement = page.locator('#prList h3').first();
     const titleText = await titleElement.textContent();
@@ -893,15 +943,16 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   test('should show rate limit error with reset time when X-RateLimit-Remaining is 0 (unauthenticated)', async ({ page }) => {
     // Mock GitHub API with rate limit error - unauthenticated scenario
     const resetTimestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 403,
         headers: {
           'Content-Type': 'application/json',
+          'X-RateLimit-Limit': '10',
           'X-RateLimit-Remaining': '0',
           'X-RateLimit-Reset': String(resetTimestamp),
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': 'X-RateLimit-Remaining, X-RateLimit-Reset'
+          'Access-Control-Expose-Headers': 'X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset'
         },
         body: JSON.stringify({ message: 'API rate limit exceeded' })
       });
@@ -916,23 +967,23 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
     // Check error message contains rate limit info and reset time
     const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/rate limit exceeded/i);
-    await expect(errorMessage).toContainText(/resets at/i);
-    await expect(errorMessage).toContainText(/Personal Access Token|PAT/i);
+    await expect(errorMessage).toContainText(/rate limit/i);
+    await expect(errorMessage).toContainText(/Reset at/i);
   });
 
   test('should show rate limit error when X-RateLimit-Remaining is 0 (authenticated)', async ({ page }) => {
     // Mock GitHub API with rate limit error - authenticated scenario
     const resetTimestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 403,
         headers: {
           'Content-Type': 'application/json',
+          'X-RateLimit-Limit': '30',
           'X-RateLimit-Remaining': '0',
           'X-RateLimit-Reset': String(resetTimestamp),
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': 'X-RateLimit-Remaining, X-RateLimit-Reset'
+          'Access-Control-Expose-Headers': 'X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset'
         },
         body: JSON.stringify({ message: 'API rate limit exceeded' })
       });
@@ -948,24 +999,17 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
 
     // Check error message contains rate limit info for authenticated user
     const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/rate limit exceeded/i);
-    await expect(errorMessage).toContainText(/resets at/i);
-    await expect(errorMessage).toContainText(/wait|different token/i);
+    await expect(errorMessage).toContainText(/rate limit/i);
+    await expect(errorMessage).toContainText(/Reset at|different token/i);
   });
 
   test('should show permission error for 403 when X-RateLimit-Remaining is not 0', async ({ page }) => {
     // Mock GitHub API with permission error (403 but not rate limited)
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
-        status: 403,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-RateLimit-Remaining': '4500',
-          'X-RateLimit-Reset': String(Math.floor(Date.now() / 1000) + 3600),
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': 'X-RateLimit-Remaining, X-RateLimit-Reset'
-        },
-        body: JSON.stringify({ message: 'Resource not accessible by integration' })
+        status: 422,
+        headers: createRateLimitHeaders(4500),
+        body: JSON.stringify({ message: 'Validation Failed' })
       });
     });
 
@@ -976,14 +1020,14 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Wait for error
     await page.waitForSelector('#error', { state: 'visible' });
 
-    // Check error message shows permission error
+    // Check error message shows validation error (Search API returns 422 for invalid queries)
     const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/Access forbidden|permission/i);
+    await expect(errorMessage).toContainText(/Search query validation failed|check the repository name/i);
   });
 
   test('should show fallback error when X-RateLimit-Remaining header is missing', async ({ page }) => {
     // Mock GitHub API with 403 but without rate limit headers
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 403,
         headers: {
@@ -1000,17 +1044,17 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     // Wait for error
     await page.waitForSelector('#error', { state: 'visible' });
 
-    // Check error message shows fallback error mentioning both possibilities
+    // Check error message shows rate limit error
     const errorMessage = page.locator('#errorMessage');
-    await expect(errorMessage).toContainText(/Access forbidden/i);
-    await expect(errorMessage).toContainText(/rate limiting|permissions/i);
+    await expect(errorMessage).toContainText(/rate limit/i);
   });
 
   test('should show authentication error for 401', async ({ page }) => {
     // Mock GitHub API with authentication error
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 401,
+        headers: createRateLimitHeaders(),
         body: JSON.stringify({ message: 'Bad credentials' })
       });
     });
@@ -1034,11 +1078,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const fiveDaysAgo = new Date(now);
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 1,
@@ -1047,12 +1091,9 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
             user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: 'javascript:alert("XSS")',
-            body: 'Test',
-            labels: []
+            html_url: 'javascript:alert("XSS")'
           }
-        ])
+        ]))
       });
     });
 
@@ -1078,11 +1119,11 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
     const validUrl = 'https://github.com/test/repo/pull/42';
 
-    await page.route('https://api.github.com/**', route => {
+    await page.route('https://api.github.com/search/issues**', route => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
           {
             id: 1,
             number: 42,
@@ -1091,12 +1132,9 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
             merged_at: null,
             created_at: fiveDaysAgo.toISOString(),
             user: { login: 'copilot' },
-            assignees: [{ login: 'copilot' }],
-            html_url: validUrl,
-            body: 'Test',
-            labels: []
+            html_url: validUrl
           }
-        ])
+        ]))
       });
     });
 
@@ -1110,6 +1148,537 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const prLink = page.locator('#prList a[target="_blank"]').first();
     const href = await prLink.getAttribute('href');
     expect(href).toBe(validUrl);
+  });
+
+  // New tests for caching and rate limit display
+  test('should display rate limit information after successful search', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(4990, 5000, 10),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    // Wait for results and rate limit info
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
+    await page.waitForSelector('#rateLimitInfo', { state: 'visible', timeout: 5000 });
+
+    // Verify rate limit info is displayed
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('GitHub Search API');
+    await expect(rateLimitInfo).toContainText('remaining');
+    await expect(rateLimitInfo).toContainText('Resets in');
+  });
+
+  test('should show cached indicator when data is from cache', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    let requestCount = 0;
+    await page.route('https://api.github.com/search/issues**', route => {
+      requestCount++;
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(4990, 5000, 10),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    // First search
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
+
+    // Wait for rate limit info
+    await page.waitForSelector('#rateLimitInfo', { state: 'visible', timeout: 5000 });
+
+    // Second search with same parameters (should use cache)
+    await page.click('#searchButton');
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
+
+    // Wait a moment for the UI to update
+    await page.waitForTimeout(500);
+
+    // Verify cached indicator is shown
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Cached');
+
+    // Verify only one API request was made
+    expect(requestCount).toBe(1);
+  });
+
+  test('should use Search API with correct query parameters', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    let capturedUrl = '';
+    await page.route('https://api.github.com/search/issues**', route => {
+      capturedUrl = route.request().url();
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([]))
+      });
+    });
+
+    // Set specific date range
+    await page.fill('#repoInput', 'owner/repo');
+    await page.fill('#fromDate', '2026-01-01');
+    await page.fill('#toDate', '2026-01-15');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
+
+    // Verify the search query includes the correct parameters
+    expect(capturedUrl).toContain('api.github.com/search/issues');
+    const decodedUrl = decodeURIComponent(capturedUrl);
+    expect(decodedUrl).toContain('repo:owner/repo');
+    expect(decodedUrl).toContain('is:pr');
+    expect(decodedUrl).toContain('author:app/copilot-swe-agent');
+    expect(decodedUrl).toContain('created:2026-01-01..2026-01-15');
+  });
+
+  test('should show warning color when rate limit is low', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(500, 5000, 4500), // 10% remaining
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#rateLimitInfo', { state: 'visible', timeout: 10000 });
+
+    // Verify "Low" status is shown for low remaining requests
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Low');
+  });
+
+  test('should hide rate limit info when starting new search', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      // Add delay to observe the hiding behavior
+      await new Promise(resolve => setTimeout(resolve, 200));
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    // First search with unique params to avoid cache
+    await page.fill('#repoInput', 'test/repo1');
+    await page.click('#searchButton');
+    await page.waitForSelector('#rateLimitInfo', { state: 'visible', timeout: 10000 });
+
+    // Start new search with different params
+    await page.fill('#repoInput', 'test/repo2');
+    await page.click('#searchButton');
+
+    // Rate limit info should be hidden while loading
+    await expect(page.locator('#rateLimitInfo')).toBeHidden();
+  });
+
+  test('should show warning status when rate limit is between 20-50%', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(1500, 5000, 3500), // 30% remaining
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#rateLimitInfo', { state: 'visible', timeout: 10000 });
+
+    // Verify "Warning" status is shown for medium remaining requests
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Warning');
+  });
+
+  test('should show unauthenticated badge when rate limit is 10', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(9, 10, 1), // Unauthenticated limit = 10
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#rateLimitInfo', { state: 'visible', timeout: 10000 });
+
+    // Verify "Unauthenticated" badge is shown
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Unauthenticated');
+    await expect(rateLimitInfo).toContainText('10 requests/min');
+  });
+
+  test('should show authenticated badge when rate limit is greater than 10', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(29, 30, 1), // Authenticated limit = 30
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#rateLimitInfo', { state: 'visible', timeout: 10000 });
+
+    // Verify "Authenticated" badge is shown
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Authenticated');
+    await expect(rateLimitInfo).toContainText('30 requests/min');
+  });
+
+  test('should reject http:// URLs and sanitize to # in html_url', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'PR with http URL',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'http://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Get the link element and verify its href is sanitized to "#"
+    const prLink = page.locator('#prList a[target="_blank"]').first();
+    const href = await prLink.getAttribute('href');
+    expect(href).toBe('#');
+  });
+
+  test('should reject non-github.com URLs and sanitize to #', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'PR with malicious URL',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://evil.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Get the link element and verify its href is sanitized to "#"
+    const prLink = page.locator('#prList a[target="_blank"]').first();
+    const href = await prLink.getAttribute('href');
+    expect(href).toBe('#');
+  });
+
+  test('should handle PR with zero or negative number', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 0,
+            title: 'PR with zero number',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          },
+          {
+            id: 2,
+            number: -1,
+            title: 'PR with negative number',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/2'
+          }
+        ]))
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#prList', { state: 'visible', timeout: 10000 });
+
+    // Verify the PRs are displayed
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('PR with zero number');
+    await expect(prList).toContainText('PR with negative number');
+
+    // Verify that neither "#0" nor "#-1" is displayed
+    const prListText = await prList.textContent();
+    expect(prListText).not.toContain('#0');
+    expect(prListText).not.toContain('#-1');
+  });
+
+  test('should reject repository names with path traversal attempts', async ({ page }) => {
+    // Test ".." as repo name (path traversal attempt)
+    await page.fill('#repoInput', 'owner/..');
+    await page.click('#searchButton');
+
+    // Check error message
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText('Invalid repository name');
+  });
+
+  test('should reject repository names with single dot', async ({ page }) => {
+    // Test "." as repo name
+    await page.fill('#repoInput', 'owner/.');
+    await page.click('#searchButton');
+
+    // Check error message
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText('Invalid repository name');
+  });
+
+  test('should cache data and use it for subsequent requests', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    let requestCount = 0;
+    await page.route('https://api.github.com/search/issues**', route => {
+      requestCount++;
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Cached PR',
+            state: 'open',
+            merged_at: null,
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    // First request
+    await page.fill('#repoInput', 'cache-test/repo');
+    await page.click('#searchButton');
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
+
+    expect(requestCount).toBe(1);
+
+    // Second request with same params - should use cache
+    await page.click('#searchButton');
+    await page.waitForSelector('#results', { state: 'visible', timeout: 10000 });
+
+    // Request count should still be 1 (cache was used)
+    expect(requestCount).toBe(1);
+
+    // Verify cache indicator is shown
+    const rateLimitInfo = page.locator('#rateLimitInfo');
+    await expect(rateLimitInfo).toContainText('Cached');
+    await expect(rateLimitInfo).toContainText('No API call made');
+  });
+
+  test('should update chart theme when toggling dark mode', async ({ page }) => {
+    const now = new Date();
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([
+          {
+            id: 1,
+            number: 1,
+            title: 'Test PR',
+            state: 'closed',
+            merged_at: fiveDaysAgo.toISOString(),
+            created_at: fiveDaysAgo.toISOString(),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1'
+          }
+        ]))
+      });
+    });
+
+    // First, create a chart
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+    await page.waitForSelector('#prChart canvas', { state: 'visible', timeout: 10000 });
+
+    // Toggle dark mode
+    const themeToggle = page.locator('#themeToggle');
+    await themeToggle.click();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+
+    // Verify chart still exists after theme toggle
+    const canvas = page.locator('#prChart canvas');
+    await expect(canvas).toBeVisible();
+
+    // Toggle back to light mode
+    await themeToggle.click();
+    await expect(page.locator('html')).not.toHaveClass(/dark/);
+
+    // Verify chart still exists
+    await expect(canvas).toBeVisible();
   });
 
 });

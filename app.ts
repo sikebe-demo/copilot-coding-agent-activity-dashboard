@@ -37,8 +37,44 @@ interface StatusConfigMap {
     open: StatusConfig;
 }
 
+interface RateLimitInfo {
+    limit: number;
+    remaining: number;
+    reset: number;
+    used: number;
+}
+
+interface CacheEntry {
+    data: PullRequest[];
+    timestamp: number;
+    rateLimitInfo: RateLimitInfo | null;
+}
+
+interface SearchResponse {
+    total_count: number;
+    incomplete_results: boolean;
+    items: SearchIssueItem[];
+}
+
+interface SearchIssueItem {
+    id: number;
+    number: number;
+    title: string;
+    state: 'open' | 'closed';
+    created_at: string;
+    user: GitHubUser;
+    html_url: string;
+    pull_request?: {
+        merged_at: string | null;
+    };
+}
+
 // Global chart instance
 let chartInstance: Chart | null = null;
+
+// Cache settings
+const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
+const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
@@ -132,10 +168,14 @@ async function handleFormSubmit(e: Event): Promise<void> {
     showLoading();
     hideError();
     hideResults();
+    hideRateLimitInfo();
 
     try {
-        const prs = await fetchCopilotPRs(owner, repo, fromDate, toDate, token);
-        displayResults(prs, fromDate, toDate);
+        const result = await fetchCopilotPRsWithCache(owner, repo, fromDate, toDate, token);
+        displayResults(result.prs, fromDate, toDate);
+        if (result.rateLimitInfo) {
+            displayRateLimitInfo(result.rateLimitInfo, result.fromCache);
+        }
     } catch (error) {
         showError(error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
@@ -156,8 +196,133 @@ function isValidGitHubName(name: string): boolean {
     return validPattern.test(name);
 }
 
+// Cache Functions
+function getCacheKey(owner: string, repo: string, fromDate: string, toDate: string): string {
+    return `${CACHE_KEY_PREFIX}${owner}_${repo}_${fromDate}_${toDate}`;
+}
+
+function getFromCache(cacheKey: string): CacheEntry | null {
+    try {
+        const cached = localStorage.getItem(cacheKey);
+        if (!cached) return null;
+
+        const entry: CacheEntry = JSON.parse(cached);
+        const now = Date.now();
+
+        // Check if cache is still valid
+        if (now - entry.timestamp > CACHE_DURATION_MS) {
+            localStorage.removeItem(cacheKey);
+            return null;
+        }
+
+        return entry;
+    } catch {
+        return null;
+    }
+}
+
+function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo: RateLimitInfo | null): void {
+    try {
+        const entry: CacheEntry = {
+            data,
+            timestamp: Date.now(),
+            rateLimitInfo
+        };
+        localStorage.setItem(cacheKey, JSON.stringify(entry));
+    } catch {
+        // Cache save failed (e.g., localStorage full), ignore
+    }
+}
+
+function clearOldCache(): void {
+    try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith(CACHE_KEY_PREFIX)) {
+                const cached = localStorage.getItem(key);
+                if (cached) {
+                    try {
+                        const entry: CacheEntry = JSON.parse(cached);
+                        if (Date.now() - entry.timestamp > CACHE_DURATION_MS) {
+                            keysToRemove.push(key);
+                        }
+                    } catch {
+                        keysToRemove.push(key);
+                    }
+                }
+            }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+    } catch {
+        // Ignore cache cleanup errors
+    }
+}
+
 // GitHub API Functions
-async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, toDate: string, token: string): Promise<PullRequest[]> {
+function extractRateLimitInfo(response: Response): RateLimitInfo | null {
+    const limit = response.headers.get('X-RateLimit-Limit');
+    const remaining = response.headers.get('X-RateLimit-Remaining');
+    const reset = response.headers.get('X-RateLimit-Reset');
+    const used = response.headers.get('X-RateLimit-Used');
+
+    if (limit && remaining && reset) {
+        return {
+            limit: parseInt(limit, 10),
+            remaining: parseInt(remaining, 10),
+            reset: parseInt(reset, 10),
+            used: used ? parseInt(used, 10) : 0
+        };
+    }
+    return null;
+}
+
+interface FetchResult {
+    prs: PullRequest[];
+    rateLimitInfo: RateLimitInfo | null;
+    fromCache: boolean;
+}
+
+async function fetchCopilotPRsWithCache(
+    owner: string,
+    repo: string,
+    fromDate: string,
+    toDate: string,
+    token: string
+): Promise<FetchResult> {
+    // Clean up old cache entries
+    clearOldCache();
+
+    const cacheKey = getCacheKey(owner, repo, fromDate, toDate);
+    const cached = getFromCache(cacheKey);
+
+    if (cached) {
+        return {
+            prs: cached.data,
+            rateLimitInfo: cached.rateLimitInfo,
+            fromCache: true
+        };
+    }
+
+    const result = await fetchCopilotPRsWithSearchAPI(owner, repo, fromDate, toDate, token);
+
+    // Save to cache
+    saveToCache(cacheKey, result.prs, result.rateLimitInfo);
+
+    return { ...result, fromCache: false };
+}
+
+// Use Search API instead of REST API for better efficiency
+// Search API allows filtering by date and author directly, reducing API calls significantly
+// Old REST API: Fetches ALL PRs page by page, then filters -> many requests
+// New Search API: Filters at query level -> typically 1-2 requests
+async function fetchCopilotPRsWithSearchAPI(
+    owner: string,
+    repo: string,
+    fromDate: string,
+    toDate: string,
+    token: string
+): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null }> {
     const headers: HeadersInit = {
         'Accept': 'application/vnd.github.v3+json'
     };
@@ -166,95 +331,74 @@ async function fetchCopilotPRs(owner: string, repo: string, fromDate: string, to
         headers['Authorization'] = `Bearer ${token}`;
     }
 
+    // Build search query for Copilot PRs within date range
+    // Search API requires 'author:app/copilot-swe-agent' to search for Copilot Coding Agent PRs
+    // Note: Do NOT encode owner/repo here - the query string will be encoded when added to URL
+    const query = `repo:${owner}/${repo} is:pr author:app/copilot-swe-agent created:${fromDate}..${toDate}`;
+
     const allPRs: PullRequest[] = [];
     let page = 1;
-    const perPage = 100;
-
-    // URL-encode owner and repo to prevent injection attacks
-    const encodedOwner = encodeURIComponent(owner);
-    const encodedRepo = encodeURIComponent(repo);
+    const perPage = 100; // Search API max is 100
+    let rateLimitInfo: RateLimitInfo | null = null;
 
     while (true) {
-        const url = `https://api.github.com/repos/${encodedOwner}/${encodedRepo}/pulls?state=all&per_page=${perPage}&page=${page}&sort=created&direction=desc`;
+        const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&sort=created&order=desc`;
 
         const response = await fetch(url, { headers });
+
+        // Extract rate limit info from response
+        rateLimitInfo = extractRateLimitInfo(response);
 
         if (!response.ok) {
             if (response.status === 404) {
                 throw new Error('Repository not found');
-            } else if (response.status === 403) {
-                // Check if it's actually a rate limit error by inspecting the header
-                const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
-                if (rateLimitRemaining === '0') {
-                    // Confirmed rate limit: header exists and is '0'
-                    const resetTime = response.headers.get('X-RateLimit-Reset');
-                    let resetDate: Date | null = null;
-                    if (resetTime) {
-                        const resetTimestamp = parseInt(resetTime, 10);
-                        if (!isNaN(resetTimestamp)) {
-                            resetDate = new Date(resetTimestamp * 1000);
-                        }
-                    }
-                    const resetMessage = resetDate
-                        ? ` Rate limit resets at ${resetDate.toLocaleString('ja-JP', { timeZone: 'UTC', hour12: false })} (UTC).`
-                        : '';
-                    if (token) {
-                        throw new Error(`API rate limit exceeded.${resetMessage} Please wait or use a different token.`);
-                    } else {
-                        throw new Error(`API rate limit exceeded.${resetMessage} Please use a GitHub Personal Access Token (PAT) for higher limits.`);
-                    }
-                } else if (rateLimitRemaining === null) {
-                    // Header missing - could be rate limit or permission error, fall back to generic message
-                    throw new Error('Access forbidden. This may be due to rate limiting or insufficient permissions. Please try using a GitHub Personal Access Token (PAT) with repo scope.');
-                } else {
-                    // 403 but not rate limited (header exists and is not '0') - likely a permission issue
-                    throw new Error('Access forbidden. Please check that your token has the required permissions (repo scope) or that the repository is accessible.');
-                }
             } else if (response.status === 401) {
                 throw new Error('Authentication failed. Please check that your GitHub token is valid.');
+            } else if (response.status === 403) {
+                const resetTime = rateLimitInfo?.reset
+                    ? new Date(rateLimitInfo.reset * 1000).toLocaleTimeString('ja-JP')
+                    : 'unknown';
+                throw new Error(`API rate limit reached. Reset at: ${resetTime}. Try again later or use a different token.`);
+            } else if (response.status === 422) {
+                throw new Error('Search query validation failed. Please check the repository name.');
             } else {
                 throw new Error(`GitHub API Error: ${response.status}`);
             }
         }
 
-        const prs: PullRequest[] = await response.json();
+        const searchResponse: SearchResponse = await response.json();
+        const items = searchResponse.items;
 
-        if (prs.length === 0) break;
+        if (items.length === 0) break;
 
-        // Filter PRs by date range
-        const fromDateObj = new Date(fromDate);
-        const toDateObj = new Date(toDate);
-        toDateObj.setHours(23, 59, 59, 999);
+        // Convert search results to PullRequest format
+        const prs: PullRequest[] = items.map(item => ({
+            id: item.id,
+            number: item.number,
+            title: item.title,
+            state: item.state,
+            merged_at: item.pull_request?.merged_at ?? null,
+            created_at: item.created_at,
+            user: item.user,
+            html_url: item.html_url
+        }));
 
-        const filteredPRs = prs.filter(pr => {
-            const createdAt = new Date(pr.created_at);
-            return createdAt >= fromDateObj && createdAt <= toDateObj;
-        });
+        allPRs.push(...prs);
 
-        allPRs.push(...filteredPRs);
-
-        // If the oldest PR in this batch is before our date range, stop fetching
-        if (prs.length > 0 && new Date(prs[prs.length - 1].created_at) < fromDateObj) {
+        // Search API returns max 1000 results, check if we need more pages
+        if (items.length < perPage || allPRs.length >= searchResponse.total_count) {
             break;
         }
 
-        // If we got fewer PRs than requested, we've reached the end
-        if (prs.length < perPage) break;
+        // Search API has a limit of 1000 results (10 pages of 100)
+        if (page >= 10) {
+            break;
+        }
 
         page++;
     }
 
-    // Filter for Copilot-created PRs
-    const copilotPRs = allPRs.filter(pr => isCopilotPR(pr));
-
-    return copilotPRs;
-}
-
-function isCopilotPR(pr: PullRequest): boolean {
-    // Detect PRs created by Copilot Coding Agent
-    // Primary check: PR must be authored by the GitHub user with login "copilot"
-    // The comparison is case-insensitive and ensures we only detect PRs actually created by Copilot, not just assigned to it
-    return pr.user?.login?.toLowerCase() === 'copilot';
+    return { prs: allPRs, rateLimitInfo };
 }
 
 // Display Functions
@@ -641,4 +785,101 @@ function showResults(): void {
 function hideResults(): void {
     const results = document.getElementById('results');
     if (results) results.classList.add('hidden');
+}
+
+// Rate Limit Display Functions
+function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
+    const rateLimitEl = document.getElementById('rateLimitInfo');
+    if (!rateLimitEl) return;
+
+    const resetTime = new Date(info.reset * 1000);
+    const now = new Date();
+    const diffMs = resetTime.getTime() - now.getTime();
+    const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
+    const minutes = Math.floor(diffSecs / 60);
+    const seconds = diffSecs % 60;
+    const resetCountdown = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const usagePercent = Math.round((info.used / info.limit) * 100);
+
+    // Determine if authenticated based on limit (10 = unauthenticated, 30 = authenticated for search)
+    const isAuthenticated = info.limit > 10;
+    const authStatusBadge = isAuthenticated
+        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Authenticated</span>'
+        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">Unauthenticated</span>';
+
+    // Determine status color based on remaining requests
+    let statusClass: string;
+    let statusText: string;
+    let statusBgClass: string;
+    if (info.remaining > info.limit * 0.5) {
+        statusClass = 'text-green-600 dark:text-green-400';
+        statusBgClass = 'bg-green-100 dark:bg-green-900/30';
+        statusText = 'Good';
+    } else if (info.remaining > info.limit * 0.2) {
+        statusClass = 'text-yellow-600 dark:text-yellow-400';
+        statusBgClass = 'bg-yellow-100 dark:bg-yellow-900/30';
+        statusText = 'Warning';
+    } else {
+        statusClass = 'text-red-600 dark:text-red-400';
+        statusBgClass = 'bg-red-100 dark:bg-red-900/30';
+        statusText = 'Low';
+    }
+
+    const cacheIndicator = fromCache
+        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">Cached</span>'
+        : '';
+
+    rateLimitEl.innerHTML = `
+        <div class="space-y-3">
+            <!-- Header -->
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200">GitHub Search API</span>
+                    ${authStatusBadge}
+                    ${cacheIndicator}
+                </div>
+                <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium ${statusClass} ${statusBgClass}">${statusText}</span>
+            </div>
+
+            <!-- Progress Section -->
+            <div class="space-y-2">
+                <div class="flex justify-between items-baseline">
+                    <div class="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        <span class="${info.remaining <= info.limit * 0.2 ? 'text-red-600 dark:text-red-400' : ''}">${info.remaining}</span>
+                        <span class="text-sm font-normal text-slate-500 dark:text-slate-400">/ ${info.limit} remaining</span>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-slate-500 dark:text-slate-400">Resets in</div>
+                        <div class="text-sm font-mono font-medium text-slate-700 dark:text-slate-200">${resetCountdown}</div>
+                    </div>
+                </div>
+                <div class="relative h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div class="absolute left-0 top-0 h-full rounded-full transition-all duration-300 ${info.remaining > info.limit * 0.5 ? 'bg-green-500' : info.remaining > info.limit * 0.2 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: ${100 - usagePercent}%"></div>
+                </div>
+            </div>
+
+            <!-- Info Section -->
+            <div class="pt-2 border-t border-slate-200 dark:border-slate-700">
+                <div class="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+                    ${fromCache
+                        ? '<p>📦 Data loaded from cache (5 min TTL). No API call made.</p>'
+                        : `<p>🔄 Used ${info.used} requests this minute</p>`
+                    }
+                    <p class="flex items-start gap-1">
+                        <span class="shrink-0">💡</span>
+                        <span>${isAuthenticated
+                            ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
+                            : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">PAT</a> to increase to 30 requests/min.'
+                        }</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    `;
+    rateLimitEl.classList.remove('hidden');
+}
+
+function hideRateLimitInfo(): void {
+    const rateLimitEl = document.getElementById('rateLimitInfo');
+    if (rateLimitEl) rateLimitEl.classList.add('hidden');
 }
