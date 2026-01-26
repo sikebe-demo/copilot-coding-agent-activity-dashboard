@@ -152,32 +152,10 @@ async function fetchCopilotPRs(owner, repo, fromDate, toDate, token) {
 }
 
 function isCopilotPR(pr) {
-    // Check if PR was created by copilot
-    const copilotUsers = ['copilot-workspace-helper', 'github-copilot', 'copilot'];
-    const isCopilotUser = copilotUsers.some(user =>
-        pr.user.login.toLowerCase().includes(user)
-    );
-
-    // Check PR title/body for copilot indicators
-    const copilotIndicators = [
-        'copilot',
-        'github copilot',
-        'ai generated',
-        'workspace ai',
-        'copilot workspace'
-    ];
-
-    const titleBody = `${pr.title} ${pr.body || ''}`.toLowerCase();
-    const hasIndicator = copilotIndicators.some(indicator =>
-        titleBody.includes(indicator)
-    );
-
-    // Check labels
-    const hasLabel = pr.labels && pr.labels.some(label =>
-        label.name.toLowerCase().includes('copilot')
-    );
-
-    return isCopilotUser || hasIndicator || hasLabel;
+    // Detect PRs created by Copilot Coding Agent
+    // Primary check: PR must be authored by the GitHub user with login "copilot"
+    // The comparison is case-insensitive and ensures we only detect PRs actually created by Copilot, not just assigned to it
+    return pr.user?.login?.toLowerCase() === 'copilot';
 }
 
 // Display Functions

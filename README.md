@@ -89,11 +89,13 @@ To avoid API rate limits and access private repositories:
 
 ## 🔍 Copilot PR Detection
 
-The dashboard identifies PRs created by Copilot Coding Agent using:
+The dashboard identifies PRs created by Copilot Coding Agent by checking if the PR author (`pr.user.login`) matches `copilot` (case-insensitive).
 
-- **Username patterns**: `copilot-workspace-helper`, `github-copilot`, `copilot`
-- **Keywords**: "copilot", "github copilot", "ai generated", "workspace ai", "copilot workspace"
-- **Labels**: PRs with "copilot" label
+This method is reliable because PRs created by Copilot Coding Agent are authored by the Copilot user account (canonical login: `copilot`, though GitHub may display it with different casing).
+
+> **Note**: Branch name prefix (`copilot/`) and assignee checks are not used for detection because:
+> - Any user can create branches with the `copilot/` prefix
+> - Human-authored PRs can be assigned to Copilot for assistance
 
 ## 📁 Project Structure
 
