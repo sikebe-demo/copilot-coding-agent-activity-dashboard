@@ -7,6 +7,8 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     emptyOutDir: true,
+    minify: 'esbuild',
+    cssMinify: true,
     rollupOptions: {
       input: {
         main: './index.html'
