@@ -1245,7 +1245,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(page.locator('#prList')).toContainText('Unauthenticated PR');
   });
 
-  test('should cleanup cache entries with mismatched version on page load', async ({ page }) => {
+  test('should cleanup cache entries with mismatched version on search submission', async ({ page }) => {
     const counter = await mockSearchAPIWithCounter(page, [createPR({ title: 'Current PR' })]);
     
     const owner = 'version-cleanup-test';
