@@ -252,9 +252,17 @@ function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo: RateL
 function clearOldCache(): void {
     try {
         const keysToRemove: string[] = [];
+        const versionPrefix = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_`;
+        
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key?.startsWith(CACHE_KEY_PREFIX)) {
+                // Remove legacy entries without version prefix
+                if (!key.startsWith(versionPrefix)) {
+                    keysToRemove.push(key);
+                    continue;
+                }
+                
                 const cached = localStorage.getItem(key);
                 if (cached) {
                     try {

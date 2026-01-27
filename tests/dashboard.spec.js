@@ -1186,6 +1186,10 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     const prList = page.locator('#prList');
     await expect(prList).toContainText('Fresh PR');
     await expect(prList).not.toContainText('Legacy PR');
+
+    // Verify that the legacy cache entry has been removed from localStorage
+    const legacyCacheStillExists = await page.evaluate((key) => localStorage.getItem(key) !== null, oldCacheKey);
+    expect(legacyCacheStillExists).toBe(false);
   });
 
   test('should maintain separate caches for authenticated and unauthenticated requests', async ({ page }) => {
