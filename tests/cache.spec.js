@@ -1,15 +1,13 @@
 import { test, expect } from '@playwright/test';
 import {
   createPR,
-  createPRs,
   createSearchResponse,
   createRateLimitHeaders,
   mockSearchAPI,
   mockSearchAPIWithCounter,
   submitSearch,
   waitForResults,
-  waitForRateLimitInfo,
-  getDaysAgoISO
+  waitForRateLimitInfo
 } from './helpers.js';
 
 // ============================================================================
