@@ -1,6 +1,9 @@
 // Import Chart.js from npm
 import Chart from 'chart.js/auto';
 
+// Timer for rate limit countdown
+let rateLimitCountdownInterval: number | null = null;
+
 // Type definitions
 interface GitHubUser {
     login: string;
@@ -79,6 +82,11 @@ interface SearchIssueItem {
 
 // Global chart instance
 let chartInstance: Chart | null = null;
+
+// Pagination state
+const ITEMS_PER_PAGE = 10;
+let currentPage = 1;
+let currentPRs: PullRequest[] = [];
 
 // Cache settings
 const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
@@ -793,13 +801,21 @@ function updateChartTheme(): void {
     chartInstance.update();
 }
 
-function displayPRList(prs: PullRequest[]): void {
+function displayPRList(prs: PullRequest[], resetPage = true): void {
     const prList = document.getElementById('prList');
     if (!prList) return;
 
+    // Store PRs globally and reset page if needed
+    if (resetPage) {
+        currentPRs = [...prs].sort((a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        currentPage = 1;
+    }
+
     prList.innerHTML = '';
 
-    if (prs.length === 0) {
+    if (currentPRs.length === 0) {
         prList.innerHTML = `
             <div class="text-center py-16">
                 <svg class="w-16 h-16 mx-auto mb-4 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -807,18 +823,20 @@ function displayPRList(prs: PullRequest[]): void {
                     <line x1="12" y1="8" x2="12" y2="12"></line>
                     <line x1="12" y1="16" x2="12.01" y2="16"></line>
                 </svg>
-                <p class="text-slate-600 dark:text-slate-300">No PRs created by Copilot Coding Agent found</p>
+                <p class="text-slate-600 dark:text-slate-400">No PRs created by Copilot Coding Agent found</p>
             </div>
         `;
+        displayPagination(0, 0);
         return;
     }
 
-    // Sort PRs by created date (newest first)
-    const sortedPRs = [...prs].sort((a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    // Calculate pagination
+    const totalPages = Math.ceil(currentPRs.length / ITEMS_PER_PAGE);
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, currentPRs.length);
+    const paginatedPRs = currentPRs.slice(startIndex, endIndex);
 
-    sortedPRs.forEach((pr) => {
+    paginatedPRs.forEach((pr) => {
         const createdDate = new Date(pr.created_at).toLocaleDateString('ja-JP');
         const status: keyof StatusConfigMap = pr.merged_at ? 'merged' : pr.state;
         const statusConfig: StatusConfigMap = {
@@ -854,12 +872,12 @@ function displayPRList(prs: PullRequest[]): void {
                         ${config.icon}
                         ${config.text}
                     </span>
-                    ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-300">${prNumberDisplay}</span>` : ''}
+                    ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-400">${prNumberDisplay}</span>` : ''}
                 </div>
                 <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
-                   class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                   class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                    title="GitHubで開く">
-                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                         <polyline points="15 3 21 3 21 9"></polyline>
                         <line x1="10" y1="14" x2="21" y2="3"></line>
@@ -867,7 +885,7 @@ function displayPRList(prs: PullRequest[]): void {
                 </a>
             </div>
             <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8">${escapeHtml(pr.title)}</h3>
-            <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-300">
+            <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
                 <span class="flex items-center gap-1">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -888,6 +906,148 @@ function displayPRList(prs: PullRequest[]): void {
         `;
         prList.appendChild(prElement);
     });
+
+    // Display pagination
+    displayPagination(totalPages, currentPRs.length);
+}
+
+function displayPagination(totalPages: number, totalItems: number): void {
+    const paginationContainer = document.getElementById('prPagination');
+    if (!paginationContainer) return;
+
+    paginationContainer.innerHTML = '';
+
+    if (totalPages <= 1) {
+        return;
+    }
+
+    const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
+
+    const paginationEl = document.createElement('div');
+    paginationEl.className = 'flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700';
+
+    // Page info
+    const pageInfo = document.createElement('div');
+    pageInfo.className = 'text-sm text-slate-600 dark:text-slate-400';
+    pageInfo.textContent = `${startItem}-${endItem} / ${totalItems}件`;
+
+    // Navigation buttons
+    const navContainer = document.createElement('div');
+    navContainer.className = 'flex items-center gap-2';
+
+    // Previous button
+    const prevButton = document.createElement('button');
+    prevButton.className = `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        currentPage === 1
+            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
+    }`;
+    prevButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+    `;
+    prevButton.disabled = currentPage === 1;
+    prevButton.addEventListener('click', () => goToPage(currentPage - 1));
+
+    // Page numbers
+    const pageNumbers = document.createElement('div');
+    pageNumbers.className = 'flex items-center gap-1';
+
+    const pagesToShow = getPageNumbersToShow(currentPage, totalPages);
+    pagesToShow.forEach((page) => {
+        if (page === '...') {
+            const ellipsis = document.createElement('span');
+            ellipsis.className = 'px-2 text-slate-400 dark:text-slate-600';
+            ellipsis.textContent = '...';
+            pageNumbers.appendChild(ellipsis);
+        } else {
+            const pageButton = document.createElement('button');
+            const pageNum = page as number;
+            pageButton.className = `w-9 h-9 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                pageNum === currentPage
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`;
+            pageButton.textContent = String(pageNum);
+            pageButton.addEventListener('click', () => goToPage(pageNum));
+            pageNumbers.appendChild(pageButton);
+        }
+    });
+
+    // Next button
+    const nextButton = document.createElement('button');
+    nextButton.className = `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        currentPage === totalPages
+            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
+    }`;
+    nextButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+    `;
+    nextButton.disabled = currentPage === totalPages;
+    nextButton.addEventListener('click', () => goToPage(currentPage + 1));
+
+    navContainer.appendChild(prevButton);
+    navContainer.appendChild(pageNumbers);
+    navContainer.appendChild(nextButton);
+
+    paginationEl.appendChild(pageInfo);
+    paginationEl.appendChild(navContainer);
+    paginationContainer.appendChild(paginationEl);
+}
+
+function getPageNumbersToShow(current: number, total: number): (number | string)[] {
+    const pages: (number | string)[] = [];
+    const delta = 1; // Number of pages to show around current page
+
+    if (total <= 7) {
+        // Show all pages if total is small
+        for (let i = 1; i <= total; i++) {
+            pages.push(i);
+        }
+    } else {
+        // Always show first page
+        pages.push(1);
+
+        if (current > delta + 2) {
+            pages.push('...');
+        }
+
+        // Pages around current
+        const start = Math.max(2, current - delta);
+        const end = Math.min(total - 1, current + delta);
+
+        for (let i = start; i <= end; i++) {
+            pages.push(i);
+        }
+
+        if (current < total - delta - 1) {
+            pages.push('...');
+        }
+
+        // Always show last page
+        pages.push(total);
+    }
+
+    return pages;
+}
+
+function goToPage(page: number): void {
+    const totalPages = Math.ceil(currentPRs.length / ITEMS_PER_PAGE);
+    if (page < 1 || page > totalPages) return;
+
+    currentPage = page;
+    displayPRList(currentPRs, false);
+
+    // Scroll to PR list section
+    const prListSection = document.getElementById('prList');
+    if (prListSection) {
+        prListSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 function escapeHtml(text: string | null | undefined): string {
@@ -956,24 +1116,56 @@ function hideResults(): void {
 }
 
 // Rate Limit Display Functions
+function formatCountdown(resetTimestamp: number): string {
+    const now = Date.now();
+    const diffMs = resetTimestamp * 1000 - now;
+    const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
+    const minutes = Math.floor(diffSecs / 60);
+    const seconds = diffSecs % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function startRateLimitCountdown(resetTimestamp: number): void {
+    // Clear any existing countdown
+    if (rateLimitCountdownInterval !== null) {
+        clearInterval(rateLimitCountdownInterval);
+        rateLimitCountdownInterval = null;
+    }
+
+    const countdownEl = document.getElementById('rateLimitCountdown');
+    if (!countdownEl) return;
+
+    // Update countdown every second
+    const updateCountdown = () => {
+        const countdown = formatCountdown(resetTimestamp);
+        countdownEl.textContent = countdown;
+
+        // Stop countdown when it reaches 0:00
+        if (countdown === '0:00' && rateLimitCountdownInterval !== null) {
+            clearInterval(rateLimitCountdownInterval);
+            rateLimitCountdownInterval = null;
+        }
+    };
+
+    // Initial update
+    updateCountdown();
+
+    // Update every second
+    rateLimitCountdownInterval = window.setInterval(updateCountdown, 1000);
+}
+
 function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
     const rateLimitEl = document.getElementById('rateLimitInfo');
     if (!rateLimitEl) return;
 
-    const resetTime = new Date(info.reset * 1000);
-    const now = new Date();
-    const diffMs = resetTime.getTime() - now.getTime();
-    const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
-    const minutes = Math.floor(diffSecs / 60);
-    const seconds = diffSecs % 60;
-    const resetCountdown = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const resetCountdown = formatCountdown(info.reset);
     const usagePercent = Math.round((info.used / info.limit) * 100);
 
     // Determine if authenticated based on limit (10 = unauthenticated, 30 = authenticated for search)
     const isAuthenticated = info.limit > 10;
     const authStatusBadge = isAuthenticated
         ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Authenticated</span>'
-        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">Unauthenticated</span>';
+        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">Unauthenticated</span>';
 
     // Determine status color based on remaining requests
     let statusClass: string;
@@ -1018,7 +1210,7 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
                     </div>
                     <div class="text-right">
                         <div class="text-xs text-slate-500 dark:text-slate-400">Resets in</div>
-                        <div class="text-sm font-mono font-medium text-slate-700 dark:text-slate-200">${resetCountdown}</div>
+                        <div id="rateLimitCountdown" class="text-sm font-mono font-medium text-slate-700 dark:text-slate-200">${resetCountdown}</div>
                     </div>
                 </div>
                 <div class="relative h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -1037,7 +1229,7 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
                         <span class="shrink-0">💡</span>
                         <span>${isAuthenticated
                             ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
-                            : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">PAT</a> to increase to 30 requests/min.'
+                            : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">PAT</a> to increase to 30 requests/min.'
                         }</span>
                     </p>
                 </div>
@@ -1045,9 +1237,17 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
         </div>
     `;
     rateLimitEl.classList.remove('hidden');
+
+    // Start countdown timer
+    startRateLimitCountdown(info.reset);
 }
 
 function hideRateLimitInfo(): void {
+    // Clear countdown timer
+    if (rateLimitCountdownInterval !== null) {
+        clearInterval(rateLimitCountdownInterval);
+        rateLimitCountdownInterval = null;
+    }
     const rateLimitEl = document.getElementById('rateLimitInfo');
     if (rateLimitEl) rateLimitEl.classList.add('hidden');
 }
