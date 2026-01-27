@@ -1156,6 +1156,38 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(rateLimitInfo).toContainText('No API call made');
   });
 
+  test('should ignore legacy cache without version prefix and refetch', async ({ page }) => {
+    const counter = await mockSearchAPIWithCounter(page, [createPR({ title: 'Fresh PR' })]);
+
+    const owner = 'cache-test';
+    const repo = 'repo';
+    const fromDate = '2026-01-01';
+    const toDate = '2026-01-10';
+
+    // Old cache key format (without CACHE_VERSION prefix)
+    const paramsKey = JSON.stringify({ owner, repo, fromDate, toDate });
+    const oldCacheKey = `copilot_pr_cache_${paramsKey}_noauth`;
+    const legacyEntry = {
+      data: [createPR({ title: 'Legacy PR' })],
+      timestamp: Date.now(),
+      rateLimitInfo: null,
+      allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }
+    };
+
+    // Seed legacy cache directly in the browser context
+    await page.evaluate(({ key, value }) => localStorage.setItem(key, value), { key: oldCacheKey, value: JSON.stringify(legacyEntry) });
+
+    await submitSearch(page, { repo: `${owner}/${repo}`, fromDate, toDate });
+    await waitForResults(page);
+
+    // Legacy cache should be ignored; new API calls should be made (5 calls for search + counts)
+    expect(counter.getCount()).toBe(5);
+
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('Fresh PR');
+    await expect(prList).not.toContainText('Legacy PR');
+  });
+
   test('should maintain separate caches for authenticated and unauthenticated requests', async ({ page }) => {
     // Mock API with different responses for different authentication states
     let requestCount = 0;

@@ -82,6 +82,8 @@ let chartInstance: Chart | null = null;
 
 // Cache settings
 const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
+// Bump when cache schema changes to invalidate legacy entries
+const CACHE_VERSION = 'v2';
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 // Initialize app
@@ -210,7 +212,7 @@ function getCacheKey(owner: string, repo: string, fromDate: string, toDate: stri
     const authSuffix = hasToken ? '_auth' : '_noauth';
     // Use JSON.stringify to avoid ambiguous underscore-separated encoding that can cause cache key collisions
     const paramsKey = JSON.stringify({ owner, repo, fromDate, toDate });
-    return `${CACHE_KEY_PREFIX}${paramsKey}${authSuffix}`;
+    return `${CACHE_KEY_PREFIX}${CACHE_VERSION}_${paramsKey}${authSuffix}`;
 }
 
 function getFromCache(cacheKey: string): CacheEntry | null {
