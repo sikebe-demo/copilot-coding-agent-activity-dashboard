@@ -84,6 +84,7 @@ let chartInstance: Chart | null = null;
 const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
 // Bump when cache schema changes to invalidate legacy entries
 const CACHE_VERSION = 'v2';
+const CACHE_VERSION_PREFIX = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_`;
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 // Initialize app
@@ -252,13 +253,12 @@ function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo: RateL
 function clearOldCache(): void {
     try {
         const keysToRemove: string[] = [];
-        const versionPrefix = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_`;
         
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key?.startsWith(CACHE_KEY_PREFIX)) {
-                // Remove legacy entries without version prefix
-                if (!key.startsWith(versionPrefix)) {
+                // Remove legacy entries that don't match current version format
+                if (!key.startsWith(CACHE_VERSION_PREFIX)) {
                     keysToRemove.push(key);
                     continue;
                 }
