@@ -525,8 +525,9 @@ async function fetchAllPRCounts(
             counts[key] = searchResponse.total_count;
         }
 
-        // Adjust closed count: closed_not_merged = closed (from API) - merged
-        // Because GitHub's 'is:closed' includes both merged and unmerged PRs
+        // Adjust closed count to represent only "closed but not merged" PRs:
+        // closed_not_merged = closed (from API, includes merged + unmerged) - merged
+        // NOTE: After this line, counts.closed represents "closed not merged" PRs.
         counts.closed = Math.max(0, counts.closed - counts.merged);
 
         return { counts, rateLimitInfo };
