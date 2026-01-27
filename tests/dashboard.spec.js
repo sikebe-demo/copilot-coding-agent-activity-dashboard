@@ -665,9 +665,15 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await submitSearch(page);
     await waitForResults(page);
 
-    // Check fallback display shows "/ -"
+    // Check fallback display shows "/ -" for all stat cards
     await expect(page.locator('#totalPRs')).toContainText('1');
     await expect(page.locator('#totalPRs')).toContainText('/ -');
+    await expect(page.locator('#mergedPRs')).toContainText('0');
+    await expect(page.locator('#mergedPRs')).toContainText('/ -');
+    await expect(page.locator('#closedPRs')).toContainText('0');
+    await expect(page.locator('#closedPRs')).toContainText('/ -');
+    await expect(page.locator('#openPRs')).toContainText('1');
+    await expect(page.locator('#openPRs')).toContainText('/ -');
   });
 
   test('should display PR list with correct information', async ({ page }) => {
