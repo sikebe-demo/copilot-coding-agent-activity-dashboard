@@ -509,9 +509,26 @@ async function fetchAllPRCounts(
     const counts: AllPRCounts = { ...defaultCounts };
 
     try {
-        for (const { key, query } of queries) {
-            const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
-            const response = await fetch(url, { headers });
+        // Execute all API calls in parallel using Promise.allSettled
+        // This allows all requests to complete even if some fail
+        const results = await Promise.allSettled(
+            queries.map(async ({ key, query }) => {
+                const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
+                const response = await fetch(url, { headers });
+                return { key, response };
+            })
+        );
+
+        // Process results and extract rate limit info
+        for (let i = 0; i < results.length; i++) {
+            const result = results[i];
+            
+            if (result.status === 'rejected') {
+                console.warn(`Failed to fetch ${queries[i].key} PR count:`, result.reason);
+                continue;
+            }
+
+            const { key, response } = result.value;
 
             // Extract rate limit info from response
             rateLimitInfo = extractRateLimitInfo(response) ?? rateLimitInfo;
