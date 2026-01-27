@@ -1245,6 +1245,92 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(page.locator('#prList')).toContainText('Unauthenticated PR');
   });
 
+  test('should cleanup cache entries with mismatched version on page load', async ({ page }) => {
+    const counter = await mockSearchAPIWithCounter(page, [createPR({ title: 'Current PR' })]);
+    
+    const owner = 'version-cleanup-test';
+    const repo = 'repo';
+    const fromDate = '2026-01-01';
+    const toDate = '2026-01-10';
+    
+    // Create entries with different version formats
+    const paramsKey = JSON.stringify({ owner, repo, fromDate, toDate });
+    
+    // Legacy entry (no version prefix) - should be removed
+    const legacyKey = `copilot_pr_cache_${paramsKey}_noauth`;
+    const legacyEntry = {
+      data: [createPR({ title: 'Legacy PR' })],
+      timestamp: Date.now(),
+      rateLimitInfo: null,
+      allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }
+    };
+    
+    // Old version entry (v1) - should be removed
+    const v1Key = `copilot_pr_cache_v1_${paramsKey}_noauth`;
+    const v1Entry = {
+      data: [createPR({ title: 'V1 PR' })],
+      timestamp: Date.now(),
+      rateLimitInfo: null,
+      allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }
+    };
+    
+    // Current version entry (v2) - should be kept
+    const v2Key = `copilot_pr_cache_v2_${paramsKey}_noauth`;
+    const v2Entry = {
+      data: [createPR({ title: 'V2 PR' })],
+      timestamp: Date.now(),
+      rateLimitInfo: null,
+      allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }
+    };
+    
+    // Seed all cache entries in browser context
+    await page.evaluate(({ legacy, v1, v2 }) => {
+      localStorage.setItem(legacy.key, legacy.value);
+      localStorage.setItem(v1.key, v1.value);
+      localStorage.setItem(v2.key, v2.value);
+    }, {
+      legacy: { key: legacyKey, value: JSON.stringify(legacyEntry) },
+      v1: { key: v1Key, value: JSON.stringify(v1Entry) },
+      v2: { key: v2Key, value: JSON.stringify(v2Entry) }
+    });
+    
+    // Verify all entries exist before page load
+    const beforeLoad = await page.evaluate(({ legacy, v1, v2 }) => ({
+      legacyExists: localStorage.getItem(legacy) !== null,
+      v1Exists: localStorage.getItem(v1) !== null,
+      v2Exists: localStorage.getItem(v2) !== null
+    }), { legacy: legacyKey, v1: v1Key, v2: v2Key });
+    
+    expect(beforeLoad.legacyExists).toBe(true);
+    expect(beforeLoad.v1Exists).toBe(true);
+    expect(beforeLoad.v2Exists).toBe(true);
+    
+    // Navigate to the page (this triggers clearOldCache on DOMContentLoaded)
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    
+    // Submit search to trigger cache cleanup via the fetchData function
+    await submitSearch(page, { repo: `${owner}/${repo}`, fromDate, toDate });
+    await waitForResults(page);
+    
+    // Verify version cleanup: legacy and v1 should be removed, v2 should remain
+    const afterCleanup = await page.evaluate(({ legacy, v1, v2 }) => ({
+      legacyExists: localStorage.getItem(legacy) !== null,
+      v1Exists: localStorage.getItem(v1) !== null,
+      v2Exists: localStorage.getItem(v2) !== null
+    }), { legacy: legacyKey, v1: v1Key, v2: v2Key });
+    
+    expect(afterCleanup.legacyExists).toBe(false);
+    expect(afterCleanup.v1Exists).toBe(false);
+    expect(afterCleanup.v2Exists).toBe(true);
+    
+    // Should have used v2 cache and not made new API calls
+    expect(counter.getCount()).toBe(0);
+    
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('V2 PR');
+  });
+
   test('should update chart theme when toggling dark mode', async ({ page }) => {
     await mockSearchAPI(page, { prs: [createPR({ state: 'closed', merged_at: getDaysAgoISO(5) })] });
 
