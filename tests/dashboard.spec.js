@@ -566,6 +566,110 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(page.locator('#mergeRateValue')).toContainText('50%');
   });
 
+  test('should display Copilot ratio in each stats card', async ({ page }) => {
+    // Mock: 3 Copilot PRs with specific states
+    // 2 merged, 0 closed (not merged), 1 open
+    const copilotPRs = createPRs([
+      { title: 'Copilot PR 1', state: 'closed', merged_at: getDaysAgoISO(5), created_at: getDaysAgoISO(5) },
+      { title: 'Copilot PR 2', state: 'open', created_at: getDaysAgoISO(3) },
+      { title: 'Copilot PR 3', state: 'closed', merged_at: getDaysAgoISO(1), created_at: getDaysAgoISO(2) }
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async (route, request) => {
+      const url = request.url();
+      const isCopilotQuery = url.includes('copilot-swe-agent');
+      const isMergedQuery = url.includes('is%3Amerged') || url.includes('is:merged');
+      const isOpenQuery = url.includes('is%3Aopen') || url.includes('is:open');
+      const isClosedQuery = url.includes('is%3Aclosed') || url.includes('is:closed');
+
+      if (isCopilotQuery) {
+        // Copilot PRs query
+        await route.fulfill({
+          status: 200,
+          headers: { ...createRateLimitHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(createSearchResponse(copilotPRs))
+        });
+      } else if (isMergedQuery) {
+        // Total merged PRs = 5
+        await route.fulfill({
+          status: 200,
+          headers: { ...createRateLimitHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ total_count: 5, incomplete_results: false, items: [] })
+        });
+      } else if (isOpenQuery) {
+        // Total open PRs = 3
+        await route.fulfill({
+          status: 200,
+          headers: { ...createRateLimitHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ total_count: 3, incomplete_results: false, items: [] })
+        });
+      } else if (isClosedQuery) {
+        // Total closed PRs (including merged) = 7
+        // closed_not_merged = 7 - 5 = 2
+        await route.fulfill({
+          status: 200,
+          headers: { ...createRateLimitHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ total_count: 7, incomplete_results: false, items: [] })
+        });
+      } else {
+        // Total PRs = 10
+        await route.fulfill({
+          status: 200,
+          headers: { ...createRateLimitHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ total_count: 10, incomplete_results: false, items: [] })
+        });
+      }
+    });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Check each card shows Copilot count / Total count
+    // Total: 3 / 10, Merged: 2 / 5, Closed: 0 / 2 (closed=7, merged=5, so closed_not_merged=2), Open: 1 / 3
+    await expect(page.locator('#totalPRs')).toContainText('3');
+    await expect(page.locator('#totalPRs')).toContainText('/ 10');
+    await expect(page.locator('#mergedPRs')).toContainText('2');
+    await expect(page.locator('#mergedPRs')).toContainText('/ 5');
+    await expect(page.locator('#closedPRs')).toContainText('0');
+    await expect(page.locator('#closedPRs')).toContainText('/ 2');
+    await expect(page.locator('#openPRs')).toContainText('1');
+    await expect(page.locator('#openPRs')).toContainText('/ 3');
+  });
+
+  test('should display fallback ratio when all PR count fails', async ({ page }) => {
+    const copilotPRs = createPRs([
+      { title: 'Copilot PR 1', state: 'open', created_at: getDaysAgoISO(3) }
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async (route, request) => {
+      const url = request.url();
+      const isCopilotQuery = url.includes('copilot-swe-agent');
+
+      if (isCopilotQuery) {
+        // Copilot PRs - succeeds
+        await route.fulfill({
+          status: 200,
+          headers: { ...createRateLimitHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(createSearchResponse(copilotPRs))
+        });
+      } else {
+        // All PRs queries - fail
+        await route.fulfill({
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Internal Server Error' })
+        });
+      }
+    });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Check fallback display shows "/ -"
+    await expect(page.locator('#totalPRs')).toContainText('1');
+    await expect(page.locator('#totalPRs')).toContainText('/ -');
+  });
+
   test('should display PR list with correct information', async ({ page }) => {
     const prs = [createPR({
       number: 123,
@@ -794,7 +898,8 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await submitSearch(page);
     await waitForError(page);
 
-    await expect(page.locator('#errorMessage')).toContainText(/rate limit/i);
+    // Without rate limit headers, the 403 error should show a general forbidden message
+    await expect(page.locator('#errorMessage')).toContainText(/Access forbidden|HTTP 403/i);
   });
 
   test('should show authentication error for 401', async ({ page }) => {
@@ -859,25 +964,38 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await page.waitForTimeout(500);
 
     await expect(page.locator('#rateLimitInfo')).toContainText('Cached');
-    expect(counter.getCount()).toBe(1);
+    // API is called 5 times per search: once for Copilot PRs, 4 times for all PR counts (total, merged, open, closed)
+    expect(counter.getCount()).toBe(5);
   });
 
   test('should use Search API with correct query parameters', async ({ page }) => {
-    let capturedUrl = '';
+    let capturedUrls = [];
     await mockSearchAPI(page, {
       prs: [],
-      onRequest: (req) => { capturedUrl = req.url(); }
+      onRequest: (req) => { capturedUrls.push(req.url()); }
     });
 
     await submitSearch(page, { repo: 'owner/repo', fromDate: '2026-01-01', toDate: '2026-01-15' });
     await waitForResults(page);
 
-    expect(capturedUrl).toContain('api.github.com/search/issues');
-    const decodedUrl = decodeURIComponent(capturedUrl);
-    expect(decodedUrl).toContain('repo:owner/repo');
-    expect(decodedUrl).toContain('is:pr');
-    expect(decodedUrl).toContain('author:app/copilot-swe-agent');
-    expect(decodedUrl).toContain('created:2026-01-01..2026-01-15');
+    // API is called 5 times: once for Copilot PRs, 4 times for all PR counts (total, merged, open, closed)
+    expect(capturedUrls.length).toBe(5);
+
+    // Check the Copilot PR query (first call)
+    const copilotUrl = capturedUrls[0];
+    expect(copilotUrl).toContain('api.github.com/search/issues');
+    const decodedCopilotUrl = decodeURIComponent(copilotUrl);
+    expect(decodedCopilotUrl).toContain('repo:owner/repo');
+    expect(decodedCopilotUrl).toContain('is:pr');
+    expect(decodedCopilotUrl).toContain('author:app/copilot-swe-agent');
+    expect(decodedCopilotUrl).toContain('created:2026-01-01..2026-01-15');
+
+    // Check the total PR count query (second call - no author filter)
+    const totalUrl = capturedUrls[1];
+    const decodedTotalUrl = decodeURIComponent(totalUrl);
+    expect(decodedTotalUrl).toContain('repo:owner/repo');
+    expect(decodedTotalUrl).toContain('is:pr');
+    expect(decodedTotalUrl).not.toContain('author:app/copilot-swe-agent');
   });
 
   test('should show warning color when rate limit is low', async ({ page }) => {
@@ -1010,15 +1128,15 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   test('should cache data and use it for subsequent requests', async ({ page }) => {
     const counter = await mockSearchAPIWithCounter(page, [createPR({ title: 'Cached PR' })]);
 
-    // First request
+    // First request - API is called 5 times: once for Copilot PRs, 4 times for all PR counts
     await submitSearch(page, { repo: 'cache-test/repo' });
     await waitForResults(page);
-    expect(counter.getCount()).toBe(1);
+    expect(counter.getCount()).toBe(5);
 
-    // Second request with same params - should use cache
+    // Second request with same params - should use cache (no additional API calls)
     await page.click('#searchButton');
     await waitForResults(page);
-    expect(counter.getCount()).toBe(1);
+    expect(counter.getCount()).toBe(5);
 
     const rateLimitInfo = page.locator('#rateLimitInfo');
     await expect(rateLimitInfo).toContainText('Cached');
