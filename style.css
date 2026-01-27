@@ -10,11 +10,46 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   }
 
-  /* Improve placeholder text contrast */
+  /* Using explicit CSS selectors to ensure dark mode colors apply correctly with high specificity */
+  /* Light mode: slate-500 (#64748b) */
   input::placeholder,
   textarea::placeholder {
-    @apply text-slate-500 dark:text-slate-400;
-    opacity: 1;
+    color: #64748b;
+    opacity: 1; /* Firefox fix */
+  }
+
+  /* Dark mode: slate-400 (#94a3b8) - Contrast 7:1 against slate-900 */
+  /* Using :where(.dark) to match Tailwind's dark mode selector strategy */
+  :where(.dark) input::placeholder,
+  :where(.dark) textarea::placeholder {
+    color: #94a3b8 !important;
+    opacity: 1 !important;
+  }
+
+  /* Make all clickable elements show pointer cursor */
+  a,
+  button,
+  [role="button"],
+  input[type="submit"],
+  input[type="button"] {
+    cursor: pointer;
+  }
+
+  /* Date input calendar picker icon */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+  }
+
+  /* Dark mode: invert calendar picker icon for visibility */
+  .dark input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+
+  /* Ensure input text is visible in dark mode */
+  input,
+  textarea,
+  select {
+    @apply text-slate-900 dark:text-slate-100;
   }
 }
 

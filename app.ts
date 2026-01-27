@@ -810,7 +810,7 @@ function displayPRList(prs: PullRequest[]): void {
                     <line x1="12" y1="8" x2="12" y2="12"></line>
                     <line x1="12" y1="16" x2="12.01" y2="16"></line>
                 </svg>
-                <p class="text-slate-600 dark:text-slate-300">No PRs created by Copilot Coding Agent found</p>
+                <p class="text-slate-600 dark:text-slate-400">No PRs created by Copilot Coding Agent found</p>
             </div>
         `;
         return;
@@ -857,12 +857,12 @@ function displayPRList(prs: PullRequest[]): void {
                         ${config.icon}
                         ${config.text}
                     </span>
-                    ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-300">${prNumberDisplay}</span>` : ''}
+                    ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-400">${prNumberDisplay}</span>` : ''}
                 </div>
                 <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
-                   class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                   class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                    title="GitHubで開く">
-                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                         <polyline points="15 3 21 3 21 9"></polyline>
                         <line x1="10" y1="14" x2="21" y2="3"></line>
@@ -870,7 +870,7 @@ function displayPRList(prs: PullRequest[]): void {
                 </a>
             </div>
             <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8">${escapeHtml(pr.title)}</h3>
-            <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-300">
+            <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
                 <span class="flex items-center gap-1">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -1008,7 +1008,7 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
     const isAuthenticated = info.limit > 10;
     const authStatusBadge = isAuthenticated
         ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Authenticated</span>'
-        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">Unauthenticated</span>';
+        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">Unauthenticated</span>';
 
     // Determine status color based on remaining requests
     let statusClass: string;
@@ -1072,7 +1072,7 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
                         <span class="shrink-0">💡</span>
                         <span>${isAuthenticated
                             ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
-                            : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">PAT</a> to increase to 30 requests/min.'
+                            : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">PAT</a> to increase to 30 requests/min.'
                         }</span>
                     </p>
                 </div>

@@ -28,13 +28,13 @@
                     </div>
                     <div>
                         <h1 class="text-xl font-bold gradient-text">Copilot PR Dashboard</h1>
-                        <p class="text-xs text-slate-600 dark:text-slate-200">Powered by GitHub API</p>
+                        <p class="text-xs text-slate-600 dark:text-slate-400">Powered by GitHub API</p>
                     </div>
                 </div>
 
                 <!-- Theme Toggle -->
                 <button id="themeToggle"
-                    class="p-2.5 rounded-xl glass-card"
+                    class="p-2.5 rounded-xl glass-card cursor-pointer hover:scale-105 transition-transform"
                     aria-label="Toggle theme">
                     <svg class="w-5 h-5 text-slate-700 dark:text-slate-300 dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
@@ -132,14 +132,14 @@
                         placeholder="ghp_..."
                         class="w-full px-4 py-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none"
                     >
-                    <p class="text-xs text-slate-600 dark:text-slate-300">Recommended to avoid API rate limits and access private repositories</p>
+                    <p class="text-xs text-slate-600 dark:text-slate-400">Recommended to avoid API rate limits and access private repositories</p>
                 </div>
 
                 <!-- Submit Button -->
                 <button
                     type="submit"
                     id="searchButton"
-                    class="w-full px-6 py-4 rounded-xl bg-linear-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg flex items-center justify-center space-x-2"
+                    class="w-full px-6 py-4 rounded-xl bg-linear-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg flex items-center justify-center space-x-2 cursor-pointer hover:scale-[1.02] transition-transform"
                 >
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8"></circle>
@@ -338,7 +338,7 @@
     <footer class="glass-card border-t border-white/10 mt-16">
         <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div class="text-center space-y-2">
-                <div class="flex items-center justify-center space-x-2 text-slate-700 dark:text-slate-200">
+                <div class="flex items-center justify-center space-x-2 text-slate-700 dark:text-slate-300">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <rect x="3" y="11" width="18" height="10" rx="2"></rect>
                         <circle cx="12" cy="5" r="2"></circle>
@@ -346,8 +346,8 @@
                     </svg>
                     <span class="font-semibold">Copilot Coding Agent PR Dashboard</span>
                 </div>
-                <p class="text-sm text-slate-600 dark:text-slate-200">
-                    Powered by <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-300 hover:underline">GitHub API</a>
+                <p class="text-sm text-slate-600 dark:text-slate-400">
+                    Powered by <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">GitHub API</a>
                 </p>
             </div>
         </div>
