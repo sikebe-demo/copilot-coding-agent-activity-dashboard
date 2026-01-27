@@ -520,9 +520,11 @@ async function fetchAllPRCounts(
         );
 
         // Process results and extract rate limit info
-        for (const result of results) {
+        for (let i = 0; i < results.length; i++) {
+            const result = results[i];
+            
             if (result.status === 'rejected') {
-                console.warn('Failed to fetch PR count:', result.reason);
+                console.warn(`Failed to fetch ${queries[i].key} PR count:`, result.reason);
                 continue;
             }
 
