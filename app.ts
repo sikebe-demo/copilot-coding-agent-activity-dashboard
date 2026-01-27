@@ -44,10 +44,18 @@ interface RateLimitInfo {
     used: number;
 }
 
+interface AllPRCounts {
+    total: number;
+    merged: number;
+    closed: number;
+    open: number;
+}
+
 interface CacheEntry {
     data: PullRequest[];
     timestamp: number;
     rateLimitInfo: RateLimitInfo | null;
+    allPRCounts: AllPRCounts;
 }
 
 interface SearchResponse {
@@ -74,6 +82,8 @@ let chartInstance: Chart | null = null;
 
 // Cache settings
 const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
+// Bump when cache schema changes to invalidate legacy entries
+const CACHE_VERSION = 'v2';
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 // Initialize app
@@ -172,7 +182,7 @@ async function handleFormSubmit(e: Event): Promise<void> {
 
     try {
         const result = await fetchCopilotPRsWithCache(owner, repo, fromDate, toDate, token);
-        displayResults(result.prs, fromDate, toDate);
+        displayResults(result.prs, fromDate, toDate, result.allPRCounts);
         if (result.rateLimitInfo) {
             displayRateLimitInfo(result.rateLimitInfo, result.fromCache);
         }
@@ -202,7 +212,7 @@ function getCacheKey(owner: string, repo: string, fromDate: string, toDate: stri
     const authSuffix = hasToken ? '_auth' : '_noauth';
     // Use JSON.stringify to avoid ambiguous underscore-separated encoding that can cause cache key collisions
     const paramsKey = JSON.stringify({ owner, repo, fromDate, toDate });
-    return `${CACHE_KEY_PREFIX}${paramsKey}${authSuffix}`;
+    return `${CACHE_KEY_PREFIX}${CACHE_VERSION}_${paramsKey}${authSuffix}`;
 }
 
 function getFromCache(cacheKey: string): CacheEntry | null {
@@ -225,12 +235,13 @@ function getFromCache(cacheKey: string): CacheEntry | null {
     }
 }
 
-function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo: RateLimitInfo | null): void {
+function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo: RateLimitInfo | null, allPRCounts: AllPRCounts): void {
     try {
         const entry: CacheEntry = {
             data,
             timestamp: Date.now(),
-            rateLimitInfo
+            rateLimitInfo,
+            allPRCounts
         };
         localStorage.setItem(cacheKey, JSON.stringify(entry));
     } catch {
@@ -241,9 +252,16 @@ function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo: RateL
 function clearOldCache(): void {
     try {
         const keysToRemove: string[] = [];
+        const currentVersionPrefix = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_`;
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key?.startsWith(CACHE_KEY_PREFIX)) {
+                // Remove entries that don't match current version
+                if (!key.startsWith(currentVersionPrefix)) {
+                    keysToRemove.push(key);
+                    continue;
+                }
+                
                 const cached = localStorage.getItem(key);
                 if (cached) {
                     try {
@@ -307,6 +325,7 @@ interface FetchResult {
     prs: PullRequest[];
     rateLimitInfo: RateLimitInfo | null;
     fromCache: boolean;
+    allPRCounts: AllPRCounts;
 }
 
 async function fetchCopilotPRsWithCache(
@@ -329,14 +348,15 @@ async function fetchCopilotPRsWithCache(
         return {
             prs: cached.data,
             rateLimitInfo: cached.rateLimitInfo,
-            fromCache: true
+            fromCache: true,
+            allPRCounts: cached.allPRCounts
         };
     }
 
     const result = await fetchCopilotPRsWithSearchAPI(owner, repo, fromDate, toDate, token);
 
     // Save to cache
-    saveToCache(cacheKey, result.prs, result.rateLimitInfo);
+    saveToCache(cacheKey, result.prs, result.rateLimitInfo, result.allPRCounts);
 
     return { ...result, fromCache: false };
 }
@@ -351,7 +371,7 @@ async function fetchCopilotPRsWithSearchAPI(
     fromDate: string,
     toDate: string,
     token: string
-): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null }> {
+): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null; allPRCounts: AllPRCounts }> {
     const headers: HeadersInit = {
         'Accept': 'application/vnd.github.v3+json'
     };
@@ -412,7 +432,7 @@ async function fetchCopilotPRsWithSearchAPI(
 
         const searchResponse: SearchResponse = await response.json();
         const items = searchResponse.items;
-        
+
         // Store total_count from first response
         if (page === 1) {
             totalCount = searchResponse.total_count;
@@ -464,11 +484,85 @@ async function fetchCopilotPRsWithSearchAPI(
         );
     }
 
-    return { prs: allPRs, rateLimitInfo };
+    // Fetch all PR counts (total, merged, closed, open) for all authors
+    const allPRCounts = await fetchAllPRCounts(owner, repo, fromDate, toDate, headers, rateLimitInfo);
+
+    return { prs: allPRs, rateLimitInfo: allPRCounts.rateLimitInfo ?? rateLimitInfo, allPRCounts: allPRCounts.counts };
+}
+
+// Fetch counts of all PRs in the repository within the date range (all authors)
+// Returns counts for total, merged, closed, and open PRs
+async function fetchAllPRCounts(
+    owner: string,
+    repo: string,
+    fromDate: string,
+    toDate: string,
+    headers: HeadersInit,
+    existingRateLimitInfo: RateLimitInfo | null
+): Promise<{ counts: AllPRCounts; rateLimitInfo: RateLimitInfo | null }> {
+    const defaultCounts: AllPRCounts = { total: 0, merged: 0, closed: 0, open: 0 };
+    let rateLimitInfo = existingRateLimitInfo;
+
+    // Build search queries for different states
+    // Note: In GitHub, 'closed' PRs include both merged and unmerged PRs
+    // So we query 'is:closed' directly and calculate closed_not_merged = closed - merged
+    const queries = [
+        { key: 'total' as const, query: `repo:${owner}/${repo} is:pr created:${fromDate}..${toDate}` },
+        { key: 'merged' as const, query: `repo:${owner}/${repo} is:pr is:merged created:${fromDate}..${toDate}` },
+        { key: 'open' as const, query: `repo:${owner}/${repo} is:pr is:open created:${fromDate}..${toDate}` },
+        { key: 'closed' as const, query: `repo:${owner}/${repo} is:pr is:closed created:${fromDate}..${toDate}` }
+    ];
+
+    const counts: AllPRCounts = { ...defaultCounts };
+
+    try {
+        // Execute all API calls in parallel using Promise.allSettled
+        // This allows all requests to complete even if some fail
+        const results = await Promise.allSettled(
+            queries.map(async ({ key, query }) => {
+                const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
+                const response = await fetch(url, { headers });
+                return { key, response };
+            })
+        );
+
+        // Process results and extract rate limit info
+        for (let i = 0; i < results.length; i++) {
+            const result = results[i];
+            
+            if (result.status === 'rejected') {
+                console.warn(`Failed to fetch ${queries[i].key} PR count:`, result.reason);
+                continue;
+            }
+
+            const { key, response } = result.value;
+
+            // Extract rate limit info from response
+            rateLimitInfo = extractRateLimitInfo(response) ?? rateLimitInfo;
+
+            if (!response.ok) {
+                console.warn(`Failed to fetch ${key} PR count:`, response.status);
+                continue;
+            }
+
+            const searchResponse: SearchResponse = await response.json();
+            counts[key] = searchResponse.total_count;
+        }
+
+        // Adjust closed count to represent only "closed but not merged" PRs:
+        // closed_not_merged = closed (from API, includes merged + unmerged) - merged
+        // NOTE: After this line, counts.closed represents "closed not merged" PRs.
+        counts.closed = Math.max(0, counts.closed - counts.merged);
+
+        return { counts, rateLimitInfo };
+    } catch (error) {
+        console.warn('Error fetching all PR counts:', error);
+        return { counts: defaultCounts, rateLimitInfo };
+    }
 }
 
 // Display Functions
-function displayResults(prs: PullRequest[], fromDate: string, toDate: string): void {
+function displayResults(prs: PullRequest[], fromDate: string, toDate: string, allPRCounts: AllPRCounts): void {
     const merged = prs.filter(pr => pr.merged_at !== null);
     const closed = prs.filter(pr => pr.state === 'closed' && pr.merged_at === null);
     const open = prs.filter(pr => pr.state === 'open');
@@ -477,16 +571,24 @@ function displayResults(prs: PullRequest[], fromDate: string, toDate: string): v
         ? Math.round((merged.length / prs.length) * 100)
         : 0;
 
-    // Update summary cards
+    // Helper function to create ratio HTML with large numerator and small denominator
+    const createRatioHtml = (copilotCount: number, totalCount: number, colorClass: string): string => {
+        if (totalCount > 0) {
+            return `<span class="text-4xl font-bold ${colorClass}">${copilotCount}</span><span class="text-lg text-slate-500 dark:text-slate-400 ml-1">/ ${totalCount}</span>`;
+        }
+        return `<span class="text-4xl font-bold ${colorClass}">${copilotCount}</span><span class="text-lg text-slate-500 dark:text-slate-400 ml-1">/ -</span>`;
+    };
+
+    // Update summary cards with ratio display
     const totalPRsEl = document.getElementById('totalPRs');
     const mergedPRsEl = document.getElementById('mergedPRs');
     const closedPRsEl = document.getElementById('closedPRs');
     const openPRsEl = document.getElementById('openPRs');
 
-    if (totalPRsEl) totalPRsEl.textContent = String(prs.length);
-    if (mergedPRsEl) mergedPRsEl.textContent = String(merged.length);
-    if (closedPRsEl) closedPRsEl.textContent = String(closed.length);
-    if (openPRsEl) openPRsEl.textContent = String(open.length);
+    if (totalPRsEl) totalPRsEl.innerHTML = createRatioHtml(prs.length, allPRCounts.total, 'text-slate-800 dark:text-slate-100');
+    if (mergedPRsEl) mergedPRsEl.innerHTML = createRatioHtml(merged.length, allPRCounts.merged, 'text-green-700 dark:text-green-400');
+    if (closedPRsEl) closedPRsEl.innerHTML = createRatioHtml(closed.length, allPRCounts.closed, 'text-red-600 dark:text-red-400');
+    if (openPRsEl) openPRsEl.innerHTML = createRatioHtml(open.length, allPRCounts.open, 'text-blue-600 dark:text-blue-400');
 
     // Update merge rate
     const mergeRateValueEl = document.getElementById('mergeRateValue');
