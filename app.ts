@@ -1,6 +1,9 @@
 // Import Chart.js from npm
 import Chart from 'chart.js/auto';
 
+// Timer for rate limit countdown
+let rateLimitCountdownInterval: number | null = null;
+
 // Type definitions
 interface GitHubUser {
     login: string;
@@ -956,17 +959,49 @@ function hideResults(): void {
 }
 
 // Rate Limit Display Functions
+function formatCountdown(resetTimestamp: number): string {
+    const now = Date.now();
+    const diffMs = resetTimestamp * 1000 - now;
+    const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
+    const minutes = Math.floor(diffSecs / 60);
+    const seconds = diffSecs % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function startRateLimitCountdown(resetTimestamp: number): void {
+    // Clear any existing countdown
+    if (rateLimitCountdownInterval !== null) {
+        clearInterval(rateLimitCountdownInterval);
+        rateLimitCountdownInterval = null;
+    }
+
+    const countdownEl = document.getElementById('rateLimitCountdown');
+    if (!countdownEl) return;
+
+    // Update countdown every second
+    const updateCountdown = () => {
+        const countdown = formatCountdown(resetTimestamp);
+        countdownEl.textContent = countdown;
+
+        // Stop countdown when it reaches 0:00
+        if (countdown === '0:00' && rateLimitCountdownInterval !== null) {
+            clearInterval(rateLimitCountdownInterval);
+            rateLimitCountdownInterval = null;
+        }
+    };
+
+    // Initial update
+    updateCountdown();
+
+    // Update every second
+    rateLimitCountdownInterval = window.setInterval(updateCountdown, 1000);
+}
+
 function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
     const rateLimitEl = document.getElementById('rateLimitInfo');
     if (!rateLimitEl) return;
 
-    const resetTime = new Date(info.reset * 1000);
-    const now = new Date();
-    const diffMs = resetTime.getTime() - now.getTime();
-    const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
-    const minutes = Math.floor(diffSecs / 60);
-    const seconds = diffSecs % 60;
-    const resetCountdown = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const resetCountdown = formatCountdown(info.reset);
     const usagePercent = Math.round((info.used / info.limit) * 100);
 
     // Determine if authenticated based on limit (10 = unauthenticated, 30 = authenticated for search)
@@ -1018,7 +1053,7 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
                     </div>
                     <div class="text-right">
                         <div class="text-xs text-slate-500 dark:text-slate-400">Resets in</div>
-                        <div class="text-sm font-mono font-medium text-slate-700 dark:text-slate-200">${resetCountdown}</div>
+                        <div id="rateLimitCountdown" class="text-sm font-mono font-medium text-slate-700 dark:text-slate-200">${resetCountdown}</div>
                     </div>
                 </div>
                 <div class="relative h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -1045,9 +1080,17 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
         </div>
     `;
     rateLimitEl.classList.remove('hidden');
+
+    // Start countdown timer
+    startRateLimitCountdown(info.reset);
 }
 
 function hideRateLimitInfo(): void {
+    // Clear countdown timer
+    if (rateLimitCountdownInterval !== null) {
+        clearInterval(rateLimitCountdownInterval);
+        rateLimitCountdownInterval = null;
+    }
     const rateLimitEl = document.getElementById('rateLimitInfo');
     if (rateLimitEl) rateLimitEl.classList.add('hidden');
 }
