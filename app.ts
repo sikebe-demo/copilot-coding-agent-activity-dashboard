@@ -83,6 +83,11 @@ interface SearchIssueItem {
 // Global chart instance
 let chartInstance: Chart | null = null;
 
+// Pagination state
+const ITEMS_PER_PAGE = 10;
+let currentPage = 1;
+let currentPRs: PullRequest[] = [];
+
 // Cache settings
 const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
 // Bump when cache schema changes to invalidate legacy entries
@@ -796,13 +801,21 @@ function updateChartTheme(): void {
     chartInstance.update();
 }
 
-function displayPRList(prs: PullRequest[]): void {
+function displayPRList(prs: PullRequest[], resetPage = true): void {
     const prList = document.getElementById('prList');
     if (!prList) return;
 
+    // Store PRs globally and reset page if needed
+    if (resetPage) {
+        currentPRs = [...prs].sort((a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        currentPage = 1;
+    }
+
     prList.innerHTML = '';
 
-    if (prs.length === 0) {
+    if (currentPRs.length === 0) {
         prList.innerHTML = `
             <div class="text-center py-16">
                 <svg class="w-16 h-16 mx-auto mb-4 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -813,15 +826,17 @@ function displayPRList(prs: PullRequest[]): void {
                 <p class="text-slate-600 dark:text-slate-400">No PRs created by Copilot Coding Agent found</p>
             </div>
         `;
+        displayPagination(0, 0);
         return;
     }
 
-    // Sort PRs by created date (newest first)
-    const sortedPRs = [...prs].sort((a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    // Calculate pagination
+    const totalPages = Math.ceil(currentPRs.length / ITEMS_PER_PAGE);
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, currentPRs.length);
+    const paginatedPRs = currentPRs.slice(startIndex, endIndex);
 
-    sortedPRs.forEach((pr) => {
+    paginatedPRs.forEach((pr) => {
         const createdDate = new Date(pr.created_at).toLocaleDateString('ja-JP');
         const status: keyof StatusConfigMap = pr.merged_at ? 'merged' : pr.state;
         const statusConfig: StatusConfigMap = {
@@ -891,6 +906,148 @@ function displayPRList(prs: PullRequest[]): void {
         `;
         prList.appendChild(prElement);
     });
+
+    // Display pagination
+    displayPagination(totalPages, currentPRs.length);
+}
+
+function displayPagination(totalPages: number, totalItems: number): void {
+    const paginationContainer = document.getElementById('prPagination');
+    if (!paginationContainer) return;
+
+    paginationContainer.innerHTML = '';
+
+    if (totalPages <= 1) {
+        return;
+    }
+
+    const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
+
+    const paginationEl = document.createElement('div');
+    paginationEl.className = 'flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700';
+
+    // Page info
+    const pageInfo = document.createElement('div');
+    pageInfo.className = 'text-sm text-slate-600 dark:text-slate-400';
+    pageInfo.textContent = `${startItem}-${endItem} / ${totalItems}件`;
+
+    // Navigation buttons
+    const navContainer = document.createElement('div');
+    navContainer.className = 'flex items-center gap-2';
+
+    // Previous button
+    const prevButton = document.createElement('button');
+    prevButton.className = `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        currentPage === 1
+            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
+    }`;
+    prevButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+    `;
+    prevButton.disabled = currentPage === 1;
+    prevButton.addEventListener('click', () => goToPage(currentPage - 1));
+
+    // Page numbers
+    const pageNumbers = document.createElement('div');
+    pageNumbers.className = 'flex items-center gap-1';
+
+    const pagesToShow = getPageNumbersToShow(currentPage, totalPages);
+    pagesToShow.forEach((page) => {
+        if (page === '...') {
+            const ellipsis = document.createElement('span');
+            ellipsis.className = 'px-2 text-slate-400 dark:text-slate-600';
+            ellipsis.textContent = '...';
+            pageNumbers.appendChild(ellipsis);
+        } else {
+            const pageButton = document.createElement('button');
+            const pageNum = page as number;
+            pageButton.className = `w-9 h-9 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                pageNum === currentPage
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`;
+            pageButton.textContent = String(pageNum);
+            pageButton.addEventListener('click', () => goToPage(pageNum));
+            pageNumbers.appendChild(pageButton);
+        }
+    });
+
+    // Next button
+    const nextButton = document.createElement('button');
+    nextButton.className = `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        currentPage === totalPages
+            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
+    }`;
+    nextButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+    `;
+    nextButton.disabled = currentPage === totalPages;
+    nextButton.addEventListener('click', () => goToPage(currentPage + 1));
+
+    navContainer.appendChild(prevButton);
+    navContainer.appendChild(pageNumbers);
+    navContainer.appendChild(nextButton);
+
+    paginationEl.appendChild(pageInfo);
+    paginationEl.appendChild(navContainer);
+    paginationContainer.appendChild(paginationEl);
+}
+
+function getPageNumbersToShow(current: number, total: number): (number | string)[] {
+    const pages: (number | string)[] = [];
+    const delta = 1; // Number of pages to show around current page
+
+    if (total <= 7) {
+        // Show all pages if total is small
+        for (let i = 1; i <= total; i++) {
+            pages.push(i);
+        }
+    } else {
+        // Always show first page
+        pages.push(1);
+
+        if (current > delta + 2) {
+            pages.push('...');
+        }
+
+        // Pages around current
+        const start = Math.max(2, current - delta);
+        const end = Math.min(total - 1, current + delta);
+
+        for (let i = start; i <= end; i++) {
+            pages.push(i);
+        }
+
+        if (current < total - delta - 1) {
+            pages.push('...');
+        }
+
+        // Always show last page
+        pages.push(total);
+    }
+
+    return pages;
+}
+
+function goToPage(page: number): void {
+    const totalPages = Math.ceil(currentPRs.length / ITEMS_PER_PAGE);
+    if (page < 1 || page > totalPages) return;
+
+    currentPage = page;
+    displayPRList(currentPRs, false);
+
+    // Scroll to PR list section
+    const prListSection = document.getElementById('prList');
+    if (prListSection) {
+        prListSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 function escapeHtml(text: string | null | undefined): string {

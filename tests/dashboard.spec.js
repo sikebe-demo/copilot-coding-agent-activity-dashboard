@@ -1960,3 +1960,219 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
   });
 
 });
+
+// ============================================================================
+// Pagination Tests
+// ============================================================================
+
+test.describe('PR List Pagination', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+  });
+
+  test('should not show pagination for less than 10 PRs', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'PR 1', state: 'open' },
+      { title: 'PR 2', state: 'open' },
+      { title: 'PR 3', state: 'closed', merged_at: getDaysAgoISO(1) }
+    ]);
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Pagination should not be visible
+    await expect(page.locator('#prPagination')).toBeEmpty();
+    // All PRs should be visible
+    await expect(page.locator('#prList')).toContainText('PR 1');
+    await expect(page.locator('#prList')).toContainText('PR 2');
+    await expect(page.locator('#prList')).toContainText('PR 3');
+  });
+
+  test('should show pagination for more than 10 PRs', async ({ page }) => {
+    // Create 15 PRs
+    const prs = Array.from({ length: 15 }, (_, i) => createPR({
+      id: i + 1,
+      number: i + 1,
+      title: `PR ${i + 1}`,
+      state: 'open',
+      created_at: getDaysAgoISO(i),
+      html_url: `https://github.com/test/repo/pull/${i + 1}`
+    }));
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Pagination should be visible
+    await expect(page.locator('#prPagination')).not.toBeEmpty();
+    // Should show page info
+    await expect(page.locator('#prPagination')).toContainText('1-10 / 15件');
+    // Should show page 1 and 2 buttons
+    await expect(page.locator('#prPagination button:has-text("1")')).toBeVisible();
+    await expect(page.locator('#prPagination button:has-text("2")')).toBeVisible();
+  });
+
+  test('should navigate to next page', async ({ page }) => {
+    // Create 15 PRs with distinct titles - newest (smallest index) first
+    // Use zero-padded numbers to avoid substring matching issues
+    const prs = Array.from({ length: 15 }, (_, i) => createPR({
+      id: i + 1,
+      number: i + 1,
+      title: `[PR-${String(i + 1).padStart(2, '0')}] Test Feature`,
+      state: 'open',
+      created_at: getDaysAgoISO(i), // PR 1 is newest (0 days ago)
+      html_url: `https://github.com/test/repo/pull/${i + 1}`
+    }));
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // First page should show PR 01-10 (newest first)
+    await expect(page.locator('#prList')).toContainText('[PR-01]');
+    await expect(page.locator('#prList')).toContainText('[PR-10]');
+
+    // Click next button (last button in pagination nav)
+    await page.locator('#prPagination button').last().click();
+
+    // Second page should show PR 11-15
+    await expect(page.locator('#prList')).toContainText('[PR-11]');
+    await expect(page.locator('#prList')).toContainText('[PR-15]');
+    // Should not show first page PRs
+    await expect(page.locator('#prList')).not.toContainText('[PR-01]');
+    await expect(page.locator('#prList')).not.toContainText('[PR-10]');
+
+    // Page info should update
+    await expect(page.locator('#prPagination')).toContainText('11-15 / 15件');
+  });
+
+  test('should navigate to previous page', async ({ page }) => {
+    const prs = Array.from({ length: 15 }, (_, i) => createPR({
+      id: i + 1,
+      number: i + 1,
+      title: `PR ${i + 1}`,
+      state: 'open',
+      created_at: getDaysAgoISO(i),
+      html_url: `https://github.com/test/repo/pull/${i + 1}`
+    }));
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Go to page 2
+    await page.locator('#prPagination button:has-text("2")').click();
+    await expect(page.locator('#prPagination')).toContainText('11-15 / 15件');
+
+    // Click previous button (first button in pagination nav)
+    await page.locator('#prPagination button').first().click();
+
+    // Should be back to page 1
+    await expect(page.locator('#prList')).toContainText('PR 1');
+    await expect(page.locator('#prPagination')).toContainText('1-10 / 15件');
+  });
+
+  test('should navigate using page number buttons', async ({ page }) => {
+    const prs = Array.from({ length: 25 }, (_, i) => createPR({
+      id: i + 1,
+      number: i + 1,
+      title: `PR ${i + 1}`,
+      state: 'open',
+      created_at: getDaysAgoISO(i),
+      html_url: `https://github.com/test/repo/pull/${i + 1}`
+    }));
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Click page 2 button
+    await page.locator('#prPagination button:has-text("2")').click();
+    await expect(page.locator('#prPagination')).toContainText('11-20 / 25件');
+
+    // Click page 3 button
+    await page.locator('#prPagination button:has-text("3")').click();
+    await expect(page.locator('#prPagination')).toContainText('21-25 / 25件');
+  });
+
+  test('should disable previous button on first page', async ({ page }) => {
+    const prs = Array.from({ length: 15 }, (_, i) => createPR({
+      id: i + 1,
+      number: i + 1,
+      title: `PR ${i + 1}`,
+      state: 'open',
+      created_at: getDaysAgoISO(i),
+      html_url: `https://github.com/test/repo/pull/${i + 1}`
+    }));
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Previous button should be disabled (first button)
+    const prevButton = page.locator('#prPagination button').first();
+    await expect(prevButton).toBeDisabled();
+  });
+
+  test('should disable next button on last page', async ({ page }) => {
+    const prs = Array.from({ length: 15 }, (_, i) => createPR({
+      id: i + 1,
+      number: i + 1,
+      title: `PR ${i + 1}`,
+      state: 'open',
+      created_at: getDaysAgoISO(i),
+      html_url: `https://github.com/test/repo/pull/${i + 1}`
+    }));
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Go to last page
+    await page.locator('#prPagination button:has-text("2")').click();
+
+    // Next button should be disabled (last button)
+    const nextButton = page.locator('#prPagination button').last();
+    await expect(nextButton).toBeDisabled();
+  });
+
+  test('should reset to page 1 on new search', async ({ page }) => {
+    const prs = Array.from({ length: 15 }, (_, i) => createPR({
+      id: i + 1,
+      number: i + 1,
+      title: `First Search PR ${i + 1}`,
+      state: 'open',
+      created_at: getDaysAgoISO(i),
+      html_url: `https://github.com/test/repo/pull/${i + 1}`
+    }));
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Go to page 2
+    await page.locator('#prPagination button:has-text("2")').click();
+    await expect(page.locator('#prPagination')).toContainText('11-15 / 15件');
+
+    // Perform new search with different PRs
+    const newPrs = Array.from({ length: 12 }, (_, i) => createPR({
+      id: i + 100,
+      number: i + 100,
+      title: `Second Search PR ${i + 1}`,
+      state: 'open',
+      created_at: getDaysAgoISO(i),
+      html_url: `https://github.com/test/repo2/pull/${i + 100}`
+    }));
+
+    await page.unroute('https://api.github.com/search/issues**');
+    await mockSearchAPI(page, { prs: newPrs });
+    await submitSearch(page, { repo: 'test/repo2' });
+    await waitForResults(page);
+
+    // Should be on page 1
+    await expect(page.locator('#prPagination')).toContainText('1-10 / 12件');
+    await expect(page.locator('#prList')).toContainText('Second Search PR 1');
+  });
+});
