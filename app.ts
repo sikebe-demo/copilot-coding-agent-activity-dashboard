@@ -269,7 +269,7 @@ function clearOldCache(): void {
                     keysToRemove.push(key);
                     continue;
                 }
-                
+
                 const cached = localStorage.getItem(key);
                 if (cached) {
                     try {
@@ -537,7 +537,7 @@ async function fetchAllPRCounts(
         // Process results and extract rate limit info
         for (let i = 0; i < results.length; i++) {
             const result = results[i];
-            
+
             if (result.status === 'rejected') {
                 console.warn(`Failed to fetch ${queries[i].key} PR count:`, result.reason);
                 continue;
