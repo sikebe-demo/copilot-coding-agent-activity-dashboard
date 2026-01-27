@@ -1440,4 +1440,523 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     await expect(errorMessage).toContainText(/try again.*narrow your date range/i);
   });
 
+  // ============================================================================
+  // Additional Edge Case Tests
+  // ============================================================================
+
+  test('should handle 500 Internal Server Error gracefully', async ({ page }) => {
+    await mockSearchAPI(page, {
+      status: 500,
+      body: { message: 'Internal Server Error' }
+    });
+
+    await submitSearch(page);
+    await waitForError(page);
+
+    await expect(page.locator('#errorMessage')).toContainText(/GitHub API Error.*500/i);
+  });
+
+  test('should handle network error gracefully', async ({ page }) => {
+    await page.route('https://api.github.com/search/issues**', route => {
+      route.abort('failed');
+    });
+
+    await submitSearch(page);
+    await waitForError(page);
+
+    await expect(page.locator('#error')).toBeVisible();
+  });
+
+  test('should sort PRs by created date (newest first)', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Oldest PR', state: 'open', created_at: '2026-01-01T10:00:00Z' },
+      { title: 'Newest PR', state: 'open', created_at: '2026-01-10T10:00:00Z' },
+      { title: 'Middle PR', state: 'open', created_at: '2026-01-05T10:00:00Z' }
+    ]);
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForPRList(page);
+
+    const prTitles = await page.locator('#prList h3').allTextContents();
+    expect(prTitles[0].trim()).toBe('Newest PR');
+    expect(prTitles[1].trim()).toBe('Middle PR');
+    expect(prTitles[2].trim()).toBe('Oldest PR');
+  });
+
+  test('should handle null URL in sanitizeUrl', async ({ page }) => {
+    // Create a PR with null html_url (simulating edge case)
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: { ...createRateLimitHeaders() },
+        body: JSON.stringify({
+          total_count: 1,
+          incomplete_results: false,
+          items: [{
+            id: 1,
+            node_id: 'PR_1',
+            number: 1,
+            title: 'PR with null URL',
+            state: 'open',
+            created_at: getDaysAgoISO(1),
+            user: { login: 'copilot' },
+            html_url: null,
+            pull_request: { merged_at: null }
+          }]
+        })
+      });
+    });
+
+    await submitSearch(page);
+    await waitForPRList(page);
+
+    // Should render without error
+    await expect(page.locator('#prList')).toContainText('PR with null URL');
+    // The link href should be '#' when URL is null
+    const href = await page.locator('#prList a[target="_blank"]').first().getAttribute('href');
+    expect(href).toBe('#');
+  });
+
+  test('should handle undefined user login gracefully', async ({ page }) => {
+    // Create a PR with undefined user
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: { ...createRateLimitHeaders() },
+        body: JSON.stringify({
+          total_count: 1,
+          incomplete_results: false,
+          items: [{
+            id: 1,
+            node_id: 'PR_1',
+            number: 1,
+            title: 'PR with undefined user',
+            state: 'open',
+            created_at: getDaysAgoISO(1),
+            user: { login: undefined },
+            html_url: 'https://github.com/test/repo/pull/1',
+            pull_request: { merged_at: null }
+          }]
+        })
+      });
+    });
+
+    await submitSearch(page);
+    await waitForPRList(page);
+
+    // Should render without error
+    await expect(page.locator('#prList')).toContainText('PR with undefined user');
+  });
+
+  test('should clear old cache entries when making new requests', async ({ page }) => {
+    // Create an expired cache entry
+    const owner = 'expired-cache';
+    const repo = 'repo';
+    const fromDate = '2026-01-01';
+    const toDate = '2026-01-10';
+
+    const paramsKey = JSON.stringify({ owner, repo, fromDate, toDate });
+    const expiredCacheKey = `copilot_pr_cache_v2_${paramsKey}_noauth`;
+    const expiredEntry = {
+      data: [createPR({ title: 'Expired PR' })],
+      timestamp: Date.now() - (10 * 60 * 1000), // 10 minutes ago (expired)
+      rateLimitInfo: null,
+      allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }
+    };
+
+    // Seed expired cache
+    await page.evaluate(({ key, value }) => localStorage.setItem(key, value), {
+      key: expiredCacheKey,
+      value: JSON.stringify(expiredEntry)
+    });
+
+    const counter = await mockSearchAPIWithCounter(page, [createPR({ title: 'Fresh PR' })]);
+
+    await submitSearch(page, { repo: `${owner}/${repo}`, fromDate, toDate });
+    await waitForResults(page);
+
+    // Expired cache should be ignored; new API calls should be made
+    expect(counter.getCount()).toBe(5);
+    await expect(page.locator('#prList')).toContainText('Fresh PR');
+    await expect(page.locator('#prList')).not.toContainText('Expired PR');
+  });
+
+  test('should display correct merge rate for edge cases', async ({ page }) => {
+    // Test with all PRs merged (100% merge rate)
+    const allMergedPRs = createPRs([
+      { title: 'Merged PR 1', state: 'closed', merged_at: getDaysAgoISO(1) },
+      { title: 'Merged PR 2', state: 'closed', merged_at: getDaysAgoISO(2) }
+    ]);
+    await mockSearchAPI(page, { prs: allMergedPRs });
+
+    await submitSearch(page, { repo: 'merge-rate-test/repo1' });
+    await waitForResults(page);
+
+    await expect(page.locator('#mergeRateValue')).toContainText('100%');
+
+    // Clear and test with no PRs merged (0% merge rate)
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+
+    const noMergedPRs = createPRs([
+      { title: 'Open PR 1', state: 'open' },
+      { title: 'Open PR 2', state: 'open' }
+    ]);
+    await mockSearchAPI(page, { prs: noMergedPRs });
+
+    await submitSearch(page, { repo: 'merge-rate-test/repo2' });
+    await waitForResults(page);
+
+    await expect(page.locator('#mergeRateValue')).toContainText('0%');
+  });
+
+  test('should handle PR with missing pull_request.merged_at field', async ({ page }) => {
+    // Simulate edge case where pull_request object exists but merged_at is missing
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: { ...createRateLimitHeaders() },
+        body: JSON.stringify({
+          total_count: 1,
+          incomplete_results: false,
+          items: [{
+            id: 1,
+            node_id: 'PR_1',
+            number: 1,
+            title: 'PR without merged_at',
+            state: 'open',
+            created_at: getDaysAgoISO(1),
+            user: { login: 'copilot' },
+            html_url: 'https://github.com/test/repo/pull/1',
+            pull_request: {}  // missing merged_at field
+          }]
+        })
+      });
+    });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Should treat as open PR
+    await expect(page.locator('#openPRs')).toContainText('1');
+    await expect(page.locator('#prList')).toContainText('Open');
+  });
+
+  test('should display rate limit info with countdown timer', async ({ page }) => {
+    const resetTimestamp = Math.floor(Date.now() / 1000) + 120; // 2 minutes from now
+    await mockSearchAPI(page, {
+      prs: [createPR()],
+      headers: {
+        'X-RateLimit-Limit': '30',
+        'X-RateLimit-Remaining': '25',
+        'X-RateLimit-Reset': String(resetTimestamp),
+        'X-RateLimit-Used': '5'
+      }
+    });
+
+    await submitSearch(page);
+    await waitForRateLimitInfo(page);
+
+    // Check that countdown is displayed
+    const countdownText = await page.locator('#rateLimitCountdown').textContent();
+    expect(countdownText).toMatch(/\d+:\d{2}/);
+  });
+
+  test('should handle special characters in repository name', async ({ page }) => {
+    // Valid characters: letters, numbers, hyphens, underscores, periods
+    await mockSearchAPI(page, { prs: [createPR()] });
+
+    await submitSearch(page, { repo: 'my-org_123/repo.name-test_v2' });
+    await waitForResults(page);
+
+    await expect(page.locator('#totalPRs')).toContainText('1');
+  });
+
+  test('should reject repository names with invalid characters', async ({ page }) => {
+    // Test with invalid characters like @, #, $, etc.
+    await page.fill('#repoInput', 'owner/repo@name');
+    await page.click('#searchButton');
+
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    await expect(page.locator('#errorMessage')).toContainText('Invalid repository name');
+  });
+
+  test('should handle closed PR that was not merged', async ({ page }) => {
+    const closedNotMergedPRs = createPRs([
+      { title: 'Closed but not merged', state: 'closed', merged_at: null }
+    ]);
+    await mockSearchAPI(page, { prs: closedNotMergedPRs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    await expect(page.locator('#closedPRs')).toContainText('1');
+    await expect(page.locator('#mergedPRs')).toContainText('0');
+    await expect(page.locator('#prList')).toContainText('Closed');
+  });
+
+  test('should handle pagination for multiple pages of results', async ({ page }) => {
+    // Mock multiple pages of results
+    let pageNumber = 0;
+    await page.route('https://api.github.com/search/issues**', async (route, request) => {
+      const url = new URL(request.url());
+      const currentPage = parseInt(url.searchParams.get('page') || '1');
+      const isCopilotQuery = url.searchParams.get('q')?.includes('copilot-swe-agent');
+
+      if (!isCopilotQuery) {
+        // Count queries
+        await route.fulfill({
+          status: 200,
+          headers: { ...createRateLimitHeaders() },
+          body: JSON.stringify({ total_count: 150, incomplete_results: false, items: [] })
+        });
+        return;
+      }
+
+      pageNumber++;
+
+      // Create 100 PRs for page 1, 50 for page 2
+      const itemCount = currentPage === 1 ? 100 : 50;
+      const prs = Array.from({ length: itemCount }, (_, i) => ({
+        id: (currentPage - 1) * 100 + i + 1,
+        node_id: `PR_${(currentPage - 1) * 100 + i + 1}`,
+        number: (currentPage - 1) * 100 + i + 1,
+        title: `PR ${(currentPage - 1) * 100 + i + 1}`,
+        state: 'open',
+        created_at: getDaysAgoISO(1),
+        user: { login: 'copilot' },
+        html_url: `https://github.com/test/repo/pull/${(currentPage - 1) * 100 + i + 1}`,
+        pull_request: { merged_at: null }
+      }));
+
+      await route.fulfill({
+        status: 200,
+        headers: { ...createRateLimitHeaders() },
+        body: JSON.stringify({
+          total_count: 150,
+          incomplete_results: false,
+          items: prs
+        })
+      });
+    });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Should have fetched all 150 PRs across 2 pages
+    await expect(page.locator('#totalPRs')).toContainText('150');
+  });
+
+  test('should hide error section when starting new search', async ({ page }) => {
+    // First search - trigger an error
+    await mockSearchAPI(page, { status: 404, body: { message: 'Not Found' } });
+    await submitSearch(page, { repo: 'error/repo1' });
+    await waitForError(page);
+    await expect(page.locator('#error')).toBeVisible();
+
+    // Second search - should hide error while loading
+    await mockSearchAPI(page, { prs: [createPR()], delay: 100 });
+    await submitSearch(page, { repo: 'success/repo2' });
+
+    // Error should be hidden during new search
+    await expect(page.locator('#error')).toBeHidden();
+  });
+
+  test('should hide results section when starting new search', async ({ page }) => {
+    // First search - success
+    await mockSearchAPI(page, { prs: [createPR()] });
+    await submitSearch(page, { repo: 'test/repo1' });
+    await waitForResults(page);
+    await expect(page.locator('#results')).toBeVisible();
+
+    // Clear cache and start new search
+    await page.evaluate(() => localStorage.clear());
+    await mockSearchAPI(page, { prs: [createPR()], delay: 200 });
+    await submitSearch(page, { repo: 'test/repo2' });
+
+    // Results should be hidden during new search
+    await expect(page.locator('#results')).toBeHidden();
+  });
+
+  test('should display merge rate bar with correct width', async ({ page }) => {
+    // Create PRs with 75% merge rate (3 merged out of 4)
+    const prs = createPRs([
+      { title: 'Merged 1', state: 'closed', merged_at: getDaysAgoISO(1) },
+      { title: 'Merged 2', state: 'closed', merged_at: getDaysAgoISO(2) },
+      { title: 'Merged 3', state: 'closed', merged_at: getDaysAgoISO(3) },
+      { title: 'Open 1', state: 'open' }
+    ]);
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Check merge rate value
+    await expect(page.locator('#mergeRateValue')).toContainText('75%');
+
+    // Check merge rate bar width
+    const barStyle = await page.locator('#mergeRateBar').getAttribute('style');
+    expect(barStyle).toContain('width: 75%');
+  });
+
+  test('should display PR created date in Japanese format', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Test PR', state: 'open', created_at: '2026-01-15T10:00:00Z' }
+    ]);
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForPRList(page);
+
+    // Japanese date format: YYYY/MM/DD
+    await expect(page.locator('#prList')).toContainText('2026/1/15');
+  });
+
+  test('should handle very long PR title without breaking layout', async ({ page }) => {
+    const longTitle = 'A'.repeat(500);
+    const prs = createPRs([
+      { title: longTitle, state: 'open' }
+    ]);
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForPRList(page);
+
+    // Should render without error
+    const prList = page.locator('#prList');
+    await expect(prList).toBeVisible();
+    await expect(prList).toContainText('AAAA');
+  });
+
+  test('should handle same start and end date', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Same day PR', state: 'open', created_at: '2026-01-15T10:00:00Z' }
+    ]);
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page, { fromDate: '2026-01-15', toDate: '2026-01-15' });
+    await waitForResults(page);
+
+    await expect(page.locator('#totalPRs')).toContainText('1');
+  });
+
+  test('should correctly calculate chart data for PRs grouped by date', async ({ page }) => {
+    // Create PRs on same date with different states
+    const prs = createPRs([
+      { title: 'Merged on day 1', state: 'closed', merged_at: '2026-01-10T10:00:00Z', created_at: '2026-01-10T10:00:00Z' },
+      { title: 'Open on day 1', state: 'open', created_at: '2026-01-10T14:00:00Z' },
+      { title: 'Closed on day 1', state: 'closed', merged_at: null, created_at: '2026-01-10T18:00:00Z' }
+    ]);
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page, { fromDate: '2026-01-10', toDate: '2026-01-10' });
+    await waitForChart(page);
+
+    // Chart should be visible with stacked bar for that day
+    const canvas = page.locator('#prChart canvas');
+    await expect(canvas).toBeVisible();
+  });
+
+  test('should show footer with correct links', async ({ page }) => {
+    const footer = page.locator('footer');
+    await expect(footer).toBeVisible();
+    await expect(footer).toContainText('Copilot Coding Agent PR Dashboard');
+    await expect(footer).toContainText('GitHub API');
+
+    // Check GitHub link
+    const githubLink = footer.locator('a[href="https://github.com"]');
+    await expect(githubLink).toHaveAttribute('target', '_blank');
+    await expect(githubLink).toHaveAttribute('rel', /noopener/);
+  });
+
+  test('should handle API response with missing rate limit headers', async ({ page }) => {
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createSearchResponse([createPR()]))
+      });
+    });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Should still display results even without rate limit info
+    await expect(page.locator('#totalPRs')).toContainText('1');
+  });
+
+  test('should handle extractRateLimitInfo with NaN values', async ({ page }) => {
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-RateLimit-Limit': 'invalid',
+          'X-RateLimit-Remaining': '50',
+          'X-RateLimit-Reset': String(Math.floor(Date.now() / 1000) + 3600)
+        },
+        body: JSON.stringify(createSearchResponse([createPR()]))
+      });
+    });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Should still display results (rate limit info extraction should fail gracefully)
+    await expect(page.locator('#totalPRs')).toContainText('1');
+  });
+
+  test('should prevent form submission when required fields are empty', async ({ page }) => {
+    // Clear repository input
+    await page.fill('#repoInput', '');
+    await page.click('#searchButton');
+
+    // HTML5 validation should prevent submission - check that loading is not shown
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('#error')).toBeHidden();
+  });
+
+  test('should handle localStorage quota exceeded gracefully', async ({ page }) => {
+    // Fill localStorage to cause quota exceeded error
+    await page.evaluate(() => {
+      try {
+        const largeData = 'x'.repeat(5 * 1024 * 1024); // 5MB
+        for (let i = 0; i < 10; i++) {
+          localStorage.setItem(`fill_${i}`, largeData);
+        }
+      } catch {
+        // Expected to fail
+      }
+    });
+
+    await mockSearchAPI(page, { prs: [createPR()] });
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Should still work even if cache save fails
+    await expect(page.locator('#totalPRs')).toContainText('1');
+  });
+
+  test('should handle malformed cache entry gracefully', async ({ page }) => {
+    const owner = 'malformed-cache';
+    const repo = 'repo';
+    const fromDate = '2026-01-01';
+    const toDate = '2026-01-10';
+
+    const paramsKey = JSON.stringify({ owner, repo, fromDate, toDate });
+    const cacheKey = `copilot_pr_cache_v2_${paramsKey}_noauth`;
+
+    // Set malformed cache entry
+    await page.evaluate(({ key }) => localStorage.setItem(key, 'not-valid-json'), { key: cacheKey });
+
+    await mockSearchAPI(page, { prs: [createPR({ title: 'Fresh Data' })] });
+    await submitSearch(page, { repo: `${owner}/${repo}`, fromDate, toDate });
+    await waitForResults(page);
+
+    // Should fetch fresh data when cache is malformed
+    await expect(page.locator('#prList')).toContainText('Fresh Data');
+  });
+
 });
