@@ -1305,7 +1305,7 @@ test.describe('Copilot Coding Agent PR Dashboard', () => {
     expect(beforeLoad.v1Exists).toBe(true);
     expect(beforeLoad.v2Exists).toBe(true);
     
-    // Navigate to the page (this triggers clearOldCache on DOMContentLoaded)
+    // Navigate to the page; cache cleanup will occur when the search is submitted
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
     
