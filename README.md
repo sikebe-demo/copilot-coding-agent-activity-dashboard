@@ -4,7 +4,7 @@ A modern, self-contained web application for analyzing and visualizing Pull Requ
 
 🚀 **[Live Demo](https://sikebe-demo.github.io/copilot-coding-agent-activity-dashboard/)**
 
-![Dashboard Preview](https://github.com/user-attachments/assets/dac3c00d-853a-4616-98c2-b40b5386d320)
+![Dashboard Preview](https://github.com/user-attachments/assets/1a94d161-f38d-4f20-a3a5-2b3d0ee9674a)
 
 ## ✨ Features
 
