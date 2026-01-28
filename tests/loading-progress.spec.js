@@ -175,7 +175,7 @@ test.describe('Loading Progress', () => {
     await expect(page.locator('#results')).toBeVisible();
   });
 
-  test('should display default loading message initially', async ({ page }) => {
+  test('should display initial loading phase after submitting search', async ({ page }) => {
     await mockSearchAPI(page, { prs: [createPR()], delay: 1000 });
 
     // Trigger loading state by submitting a search
@@ -184,13 +184,15 @@ test.describe('Loading Progress', () => {
     // Wait for loading modal to be visible first
     await page.waitForSelector('#loading:not(.hidden)', { state: 'visible', timeout: 5000 });
     
-    // Check loading elements are visible with the default placeholder copy
+    // Check loading elements are visible with the first real phase text
+    // (showLoading() sets "Fetching data..." but fetchCopilotPRsWithSearchAPI() 
+    // immediately updates to "Fetching Copilot PRs..." synchronously before any await)
     const loadingTitle = page.locator('#loadingTitle');
     const loadingMessage = page.locator('#loadingMessage');
     
     await expect(loadingTitle).toBeVisible();
     await expect(loadingMessage).toBeVisible();
-    await expect(loadingTitle).toContainText('Fetching data...');
-    await expect(loadingMessage).toContainText('Loading PR information from GitHub API');
+    await expect(loadingTitle).toContainText('Fetching');
+    await expect(loadingMessage).toContainText('Copilot');
   });
 });
