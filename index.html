@@ -161,8 +161,16 @@
                 <div class="relative w-20 h-20 mx-auto mb-6">
                     <div class="loader-ring absolute inset-0 border-t-indigo-500 dark:border-t-pink-400"></div>
                 </div>
-                <p class="text-lg font-semibold text-slate-700 dark:text-slate-200">Fetching data...</p>
-                <p class="text-sm text-slate-600 dark:text-slate-300 mt-2">Loading PR information from GitHub API</p>
+                <p id="loadingTitle" class="text-lg font-semibold text-slate-700 dark:text-slate-200">Fetching data...</p>
+                <p id="loadingMessage" class="text-sm text-slate-600 dark:text-slate-300 mt-2">Loading PR information from GitHub API</p>
+
+                <!-- Progress Bar -->
+                <div id="loadingProgress" class="mt-6 hidden">
+                    <div class="relative h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div id="loadingProgressBar" class="h-full bg-linear-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <p id="loadingProgressText" class="text-xs text-slate-500 dark:text-slate-400 mt-2"></p>
+                </div>
             </div>
         </div>
 

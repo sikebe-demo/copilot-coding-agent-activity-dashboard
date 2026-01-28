@@ -353,6 +353,8 @@ async function fetchCopilotPRsWithCache(
     const cached = getFromCache(cacheKey);
 
     if (cached) {
+        // Show brief loading phase for cache
+        updateLoadingPhase('Loading from cache...', 'Using cached data from previous request');
         return {
             prs: cached.data,
             rateLimitInfo: cached.rateLimitInfo,
@@ -399,6 +401,9 @@ async function fetchCopilotPRsWithSearchAPI(
     let rateLimitInfo: RateLimitInfo | null = null;
     let totalCount = 0;
     let incompleteResults = false;
+
+    // Update loading phase
+    updateLoadingPhase('Fetching Copilot PRs...', 'Searching for PRs created by Copilot Coding Agent');
 
     while (true) {
         const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&sort=created&order=desc`;
@@ -464,6 +469,9 @@ async function fetchCopilotPRsWithSearchAPI(
 
         allPRs.push(...prs);
 
+        // Update progress
+        updateLoadingProgress(allPRs.length, totalCount, `Fetched ${allPRs.length} of ${totalCount} Copilot PRs`);
+
         // Search API returns max 1000 results, check if we need more pages
         if (items.length < perPage || allPRs.length >= searchResponse.total_count) {
             break;
@@ -491,6 +499,9 @@ async function fetchCopilotPRsWithSearchAPI(
             'Please try again or narrow your date range for more reliable results.'
         );
     }
+
+    // Update phase for fetching all PR counts
+    updateLoadingPhase('Fetching repository stats...', 'Loading PR statistics for comparison');
 
     // Fetch all PR counts (total, merged, closed, open) for all authors
     const allPRCounts = await fetchAllPRCounts(owner, repo, fromDate, toDate, headers, rateLimitInfo);
@@ -1082,11 +1093,52 @@ function showLoading(): void {
     if (loading) {
         loading.classList.remove('hidden');
     }
+    // Reset progress display
+    resetLoadingProgress();
 }
 
 function hideLoading(): void {
     const loading = document.getElementById('loading');
     if (loading) loading.classList.add('hidden');
+    // Reset progress display
+    resetLoadingProgress();
+}
+
+function resetLoadingProgress(): void {
+    const progressContainer = document.getElementById('loadingProgress');
+    const progressBar = document.getElementById('loadingProgressBar') as HTMLElement | null;
+    const progressText = document.getElementById('loadingProgressText');
+    const loadingTitle = document.getElementById('loadingTitle');
+    const loadingMessage = document.getElementById('loadingMessage');
+
+    if (progressContainer) progressContainer.classList.add('hidden');
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressText) progressText.textContent = '';
+    if (loadingTitle) loadingTitle.textContent = 'Fetching data...';
+    if (loadingMessage) loadingMessage.textContent = 'Loading PR information from GitHub API';
+}
+
+function updateLoadingProgress(current: number, total: number, message: string): void {
+    const progressContainer = document.getElementById('loadingProgress');
+    const progressBar = document.getElementById('loadingProgressBar') as HTMLElement | null;
+    const progressText = document.getElementById('loadingProgressText');
+    const loadingMessage = document.getElementById('loadingMessage');
+
+    if (progressContainer) progressContainer.classList.remove('hidden');
+    if (progressBar && total > 0) {
+        const percent = Math.min(Math.round((current / total) * 100), 100);
+        progressBar.style.width = `${percent}%`;
+    }
+    if (progressText) progressText.textContent = `${current} / ${total}`;
+    if (loadingMessage) loadingMessage.textContent = message;
+}
+
+function updateLoadingPhase(phase: string, message: string): void {
+    const loadingTitle = document.getElementById('loadingTitle');
+    const loadingMessage = document.getElementById('loadingMessage');
+
+    if (loadingTitle) loadingTitle.textContent = phase;
+    if (loadingMessage) loadingMessage.textContent = message;
 }
 
 function showError(message: string): void {
