@@ -112,3 +112,36 @@
     transform: rotate(360deg);
   }
 }
+
+/* Tooltip Styles */
+.tooltip {
+  @apply relative;
+}
+
+.tooltip::after {
+  content: attr(data-tooltip);
+  @apply absolute z-50 invisible opacity-0 px-3 py-2 text-sm font-medium text-white bg-slate-800 dark:bg-slate-700 rounded-lg shadow-lg whitespace-nowrap transition-all duration-200;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tooltip::before {
+  content: '';
+  @apply absolute z-50 invisible opacity-0 transition-all duration-200;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: theme(colors.slate.800) transparent transparent transparent;
+}
+
+.dark .tooltip::before {
+  border-color: theme(colors.slate.700) transparent transparent transparent;
+}
+
+.tooltip:hover::after,
+.tooltip:hover::before {
+  @apply visible opacity-100;
+}
