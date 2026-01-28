@@ -142,6 +142,19 @@
 }
 
 .tooltip:hover::after,
-.tooltip:hover::before {
+.tooltip:hover::before,
+.tooltip:focus-visible::after,
+.tooltip:focus-visible::before,
+.tooltip:focus-within::after,
+.tooltip:focus-within::before {
   @apply visible opacity-100;
+}
+
+/* Accessible focus ring for tooltip triggers */
+.tooltip:focus-visible {
+  @apply outline-none ring-2 ring-indigo-500 ring-offset-2 rounded-2xl;
+}
+
+.dark .tooltip:focus-visible {
+  @apply ring-offset-slate-900;
 }
