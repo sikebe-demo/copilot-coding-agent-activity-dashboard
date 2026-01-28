@@ -134,11 +134,11 @@
   transform: translateX(-50%);
   border-width: 6px;
   border-style: solid;
-  border-color: theme(colors.slate.800) transparent transparent transparent;
+  border-color: var(--color-slate-800) transparent transparent transparent;
 }
 
 .dark .tooltip::before {
-  border-color: theme(colors.slate.700) transparent transparent transparent;
+  border-color: var(--color-slate-700) transparent transparent transparent;
 }
 
 .tooltip:hover::after,
