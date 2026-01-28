@@ -192,7 +192,7 @@ test.describe('Loading Progress', () => {
     
     await expect(loadingTitle).toBeVisible();
     await expect(loadingMessage).toBeVisible();
-    await expect(loadingTitle).toContainText('Fetching');
-    await expect(loadingMessage).toContainText('Copilot');
+    await expect(loadingTitle).toContainText('Fetching Copilot PRs');
+    await expect(loadingMessage).toContainText('Searching for PRs');
   });
 });
