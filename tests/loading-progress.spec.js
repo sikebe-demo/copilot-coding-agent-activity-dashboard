@@ -47,7 +47,6 @@ test.describe('Loading Progress', () => {
       html_url: `https://github.com/test/repo/pull/${i + 1}`
     }));
 
-    let copilotRequestCount = 0;
     await page.route('https://api.github.com/search/issues**', async route => {
       const url = new URL(route.request().url());
       const searchParams = url.searchParams;
@@ -60,8 +59,7 @@ test.describe('Loading Progress', () => {
 
       // Copilot PR search (paginated)
       if (query.includes('author:app/copilot-swe-agent')) {
-        copilotRequestCount++;
-        const start = (copilotRequestCount - 1) * perPage;
+        const start = (pageNum - 1) * perPage;
         const end = Math.min(start + perPage, prs.length);
         const pagePrs = prs.slice(start, end);
 
