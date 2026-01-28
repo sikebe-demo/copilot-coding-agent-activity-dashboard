@@ -18,6 +18,7 @@ test.describe('Loading Progress', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
+    await page.reload();
   });
 
   test('should show loading title and message during fetch', async ({ page }) => {
@@ -46,37 +47,56 @@ test.describe('Loading Progress', () => {
       html_url: `https://github.com/test/repo/pull/${i + 1}`
     }));
 
-    let requestCount = 0;
     await page.route('https://api.github.com/search/issues**', async route => {
-      requestCount++;
-      const page_num = requestCount;
-      const perPage = 100;
-      const start = (page_num - 1) * perPage;
-      const end = Math.min(start + perPage, prs.length);
-      const pagePrs = prs.slice(start, end);
+      const url = new URL(route.request().url());
+      const searchParams = url.searchParams;
+      const query = searchParams.get('q') || '';
+      const perPage = Number(searchParams.get('per_page') || '100');
+      const pageNum = Number(searchParams.get('page') || '1');
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Simulate some network latency for all requests
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Copilot PR search (paginated)
+      if (query.includes('author:app/copilot-swe-agent')) {
+        const start = (pageNum - 1) * perPage;
+        const end = Math.min(start + perPage, prs.length);
+        const pagePrs = prs.slice(start, end);
+
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify({
+            total_count: prs.length,
+            incomplete_results: false,
+            items: pagePrs.map((pr, index) => ({
+              id: pr.id,
+              node_id: `PR_${pr.id}`,
+              number: pr.number,
+              title: pr.title,
+              body: '',
+              html_url: pr.html_url,
+              user: { login: 'copilot' },
+              state: pr.state,
+              created_at: pr.created_at,
+              updated_at: pr.created_at,
+              closed_at: null,
+              pull_request: { merged_at: pr.merged_at },
+              score: 1.0
+            }))
+          })
+        });
+        return;
+      }
+
+      // All-PR count queries (used by fetchAllPRCounts) - only total_count is needed
       await route.fulfill({
         status: 200,
         headers: createRateLimitHeaders(),
         body: JSON.stringify({
           total_count: prs.length,
           incomplete_results: false,
-          items: pagePrs.map((pr, index) => ({
-            id: pr.id,
-            node_id: `PR_${pr.id}`,
-            number: pr.number,
-            title: pr.title,
-            body: '',
-            html_url: pr.html_url,
-            user: { login: 'copilot' },
-            state: pr.state,
-            created_at: pr.created_at,
-            updated_at: pr.created_at,
-            closed_at: null,
-            pull_request: { merged_at: pr.merged_at },
-            score: 1.0
-          }))
+          items: []
         })
       });
     });
@@ -118,11 +138,8 @@ test.describe('Loading Progress', () => {
     // Second search should use cache
     await submitSearch(page);
 
-    // Should show cached indicator
-    await expect(page.locator('.cached-indicator, #cachedIndicator, [data-cached="true"]')).toBeVisible({ timeout: 5000 }).catch(() => {
-      // If no cached indicator element, check for the text
-      return expect(page.locator('#results')).toContainText(/cache/i);
-    });
+    // Should show cached indicator in rate limit info
+    await expect(page.locator('#rateLimitInfo')).toContainText('Cached');
   });
 
   test('should update loading title for repository stats phase', async ({ page }) => {
@@ -158,11 +175,24 @@ test.describe('Loading Progress', () => {
     await expect(page.locator('#results')).toBeVisible();
   });
 
-  test('should display default loading message initially', async ({ page }) => {
-    await mockSearchAPI(page, { prs: [createPR()], delay: 200 });
+  test('should display initial loading phase after submitting search', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [createPR()], delay: 1000 });
 
-    // Check default state before search
-    await expect(page.locator('#loadingTitle')).toContainText('Fetching data...');
-    await expect(page.locator('#loadingMessage')).toContainText('Loading PR information from GitHub API');
+    // Trigger loading state by submitting a search
+    await submitSearch(page);
+
+    // Wait for loading modal to be visible first
+    await page.waitForSelector('#loading:not(.hidden)', { state: 'visible', timeout: 5000 });
+
+    // Check loading elements are visible with the first real phase text
+    // (showLoading() sets "Fetching data..." but fetchCopilotPRsWithSearchAPI()
+    // immediately updates to "Fetching Copilot PRs..." synchronously before any await)
+    const loadingTitle = page.locator('#loadingTitle');
+    const loadingMessage = page.locator('#loadingMessage');
+
+    await expect(loadingTitle).toBeVisible();
+    await expect(loadingMessage).toBeVisible();
+    await expect(loadingTitle).toContainText('Fetching Copilot PRs');
+    await expect(loadingMessage).toContainText('Searching for PRs');
   });
 });
