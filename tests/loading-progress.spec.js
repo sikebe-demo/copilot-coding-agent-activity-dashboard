@@ -183,9 +183,10 @@ test.describe('Loading Progress', () => {
     // Trigger loading state by submitting a search
     await submitSearch(page);
 
-    // Check loading elements are visible with appropriate text
+    // Check loading elements are visible with the default placeholder copy
     await expect(page.locator('#loadingTitle')).toBeVisible();
-    await expect(page.locator('#loadingTitle')).toContainText('Fetching');
+    await expect(page.locator('#loadingTitle')).toContainText('Fetching data...');
     await expect(page.locator('#loadingMessage')).toBeVisible();
+    await expect(page.locator('#loadingMessage')).toContainText('Loading PR information from GitHub API');
   });
 });
