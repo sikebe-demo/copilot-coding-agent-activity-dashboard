@@ -183,13 +183,13 @@ test.describe('Loading Progress', () => {
 
     // Wait for loading modal to be visible first
     await page.waitForSelector('#loading:not(.hidden)', { state: 'visible', timeout: 5000 });
-    
+
     // Check loading elements are visible with the first real phase text
-    // (showLoading() sets "Fetching data..." but fetchCopilotPRsWithSearchAPI() 
+    // (showLoading() sets "Fetching data..." but fetchCopilotPRsWithSearchAPI()
     // immediately updates to "Fetching Copilot PRs..." synchronously before any await)
     const loadingTitle = page.locator('#loadingTitle');
     const loadingMessage = page.locator('#loadingMessage');
-    
+
     await expect(loadingTitle).toBeVisible();
     await expect(loadingMessage).toBeVisible();
     await expect(loadingTitle).toContainText('Fetching Copilot PRs');
