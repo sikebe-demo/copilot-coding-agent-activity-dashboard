@@ -182,7 +182,7 @@ test.describe('Loading Progress', () => {
     await submitSearch(page);
 
     // Wait for loading modal to be visible first
-    await page.waitForSelector('#loading:not(.hidden)', { state: 'attached', timeout: 5000 });
+    await page.waitForSelector('#loading:not(.hidden)', { state: 'visible', timeout: 5000 });
     
     // Check loading elements are visible with the default placeholder copy
     const loadingTitle = page.locator('#loadingTitle');
