@@ -158,3 +158,8 @@
 .dark .tooltip:focus-visible {
   @apply ring-offset-slate-900;
 }
+
+/* Merge Rate Bar - 初期幅0%（JavaScriptで動的に更新） */
+#mergeRateBar {
+  width: 0%;
+}
