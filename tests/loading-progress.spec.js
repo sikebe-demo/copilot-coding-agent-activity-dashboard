@@ -176,15 +176,21 @@ test.describe('Loading Progress', () => {
   });
 
   test('should display default loading message initially', async ({ page }) => {
-    await mockSearchAPI(page, { prs: [createPR()], delay: 500 });
+    await mockSearchAPI(page, { prs: [createPR()], delay: 1000 });
 
     // Trigger loading state by submitting a search
     await submitSearch(page);
 
+    // Wait for loading modal to be visible first
+    await page.waitForSelector('#loading:not(.hidden)', { state: 'attached', timeout: 5000 });
+    
     // Check loading elements are visible with the default placeholder copy
-    await expect(page.locator('#loadingTitle')).toBeVisible();
-    await expect(page.locator('#loadingTitle')).toContainText('Fetching data...');
-    await expect(page.locator('#loadingMessage')).toBeVisible();
-    await expect(page.locator('#loadingMessage')).toContainText('Loading PR information from GitHub API');
+    const loadingTitle = page.locator('#loadingTitle');
+    const loadingMessage = page.locator('#loadingMessage');
+    
+    await expect(loadingTitle).toBeVisible();
+    await expect(loadingMessage).toBeVisible();
+    await expect(loadingTitle).toContainText('Fetching data...');
+    await expect(loadingMessage).toContainText('Loading PR information from GitHub API');
   });
 });
