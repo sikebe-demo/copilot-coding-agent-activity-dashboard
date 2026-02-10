@@ -139,10 +139,18 @@ test.describe('Preset Repository Buttons', () => {
   });
 
   test('should not submit form when preset button is clicked', async ({ page }) => {
+    let apiCalled = false;
+    await page.route('https://api.github.com/search/issues**', async route => {
+      apiCalled = true;
+      await route.abort();
+    });
+
     await page.locator('.preset-repo-btn[data-repo="microsoft/vscode"]').click();
 
     await expect(page.locator('#loading')).toBeHidden();
     await expect(page.locator('#error')).toBeHidden();
+    await expect(page.locator('#results')).toBeHidden();
+    expect(apiCalled).toBe(false);
   });
 
   test('should allow submitting search after preset button click', async ({ page }) => {
