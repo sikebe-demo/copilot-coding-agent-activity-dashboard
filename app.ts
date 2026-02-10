@@ -160,16 +160,19 @@ function initializeForm(): void {
 
 // Preset repository buttons
 function initializePresetRepos(): void {
-    const buttons = document.querySelectorAll('.preset-repo-btn');
-    buttons.forEach(button => {
+    const buttons = document.querySelectorAll<HTMLButtonElement>('.preset-repo-btn');
+    const repoInput = document.getElementById('repoInput') as HTMLInputElement | null;
+
+    if (!repoInput) {
+        return;
+    }
+
+    buttons.forEach((button) => {
         button.addEventListener('click', () => {
-            const repo = (button as HTMLElement).dataset.repo;
+            const repo = button.dataset.repo;
             if (repo) {
-                const repoInput = document.getElementById('repoInput') as HTMLInputElement | null;
-                if (repoInput) {
-                    repoInput.value = repo;
-                    repoInput.focus();
-                }
+                repoInput.value = repo;
+                repoInput.focus();
             }
         });
     });
