@@ -437,7 +437,26 @@ async function fetchCopilotPRsWithSearchAPI(
                     );
                 }
             } else if (response.status === 422) {
-                throw new Error('Search query validation failed. Please check the repository name.');
+                let detail = '';
+                try {
+                    const body = await response.json();
+                    if (body.errors?.[0]?.message) {
+                        detail = body.errors[0].message;
+                    }
+                } catch {
+                    // ignore parse errors
+                }
+                if (detail.includes('cannot be searched')) {
+                    throw new Error(
+                        'Search query validation failed. The repository or author filter could not be resolved. ' +
+                        'This may happen if the repository does not exist, you do not have permission to access it, ' +
+                        'or the Copilot Coding Agent app is not installed on the repository. ' +
+                        'Please verify the repository name and ensure your token has access.'
+                    );
+                }
+                throw new Error(
+                    `Search query validation failed. ${detail || 'Please check the repository name.'}`
+                );
             } else {
                 throw new Error(`GitHub API Error: ${response.status}`);
             }
