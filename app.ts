@@ -446,7 +446,7 @@ async function fetchCopilotPRsWithSearchAPI(
                 } catch {
                     // ignore parse errors
                 }
-                if (detail.includes('cannot be searched')) {
+                if (detail.toLowerCase().includes('cannot be searched')) {
                     throw new Error(
                         'Search query validation failed. The repository or author filter could not be resolved. ' +
                         'This may happen if the repository does not exist, you do not have permission to access it, ' +
