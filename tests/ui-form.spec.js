@@ -94,6 +94,92 @@ test.describe('UI & Form', () => {
 });
 
 // ============================================================================
+// Preset Repository Buttons Tests
+// ============================================================================
+
+test.describe('Preset Repository Buttons', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+  });
+
+  test('should display preset repository buttons', async ({ page }) => {
+    const presetButtons = page.locator('.preset-repo-btn');
+    await expect(presetButtons).toHaveCount(3);
+
+    await expect(presetButtons.nth(0)).toContainText('microsoft/vscode');
+    await expect(presetButtons.nth(1)).toContainText('microsoft/typespec');
+    await expect(presetButtons.nth(2)).toContainText('Azure/azure-sdk-for-net');
+  });
+
+  test('should display "Popular:" label before preset buttons', async ({ page }) => {
+    const label = page.locator('.preset-repo-btn').first().locator('..').locator('span').first();
+    await expect(label).toContainText('Popular:');
+  });
+
+  test('should fill repo input when preset button is clicked', async ({ page }) => {
+    const repoInput = page.locator('#repoInput');
+
+    await page.locator('.preset-repo-btn[data-repo="microsoft/vscode"]').click();
+    await expect(repoInput).toHaveValue('microsoft/vscode');
+
+    await page.locator('.preset-repo-btn[data-repo="microsoft/typespec"]').click();
+    await expect(repoInput).toHaveValue('microsoft/typespec');
+
+    await page.locator('.preset-repo-btn[data-repo="Azure/azure-sdk-for-net"]').click();
+    await expect(repoInput).toHaveValue('Azure/azure-sdk-for-net');
+  });
+
+  test('should focus repo input after preset button click', async ({ page }) => {
+    await page.locator('.preset-repo-btn[data-repo="microsoft/vscode"]').click();
+
+    const focusedId = await page.evaluate(() => document.activeElement?.id);
+    expect(focusedId).toBe('repoInput');
+  });
+
+  test('should not submit form when preset button is clicked', async ({ page }) => {
+    let apiCalled = false;
+    await page.route('https://api.github.com/search/issues**', async route => {
+      apiCalled = true;
+      await route.abort();
+    });
+
+    await page.locator('.preset-repo-btn[data-repo="microsoft/vscode"]').click();
+
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('#error')).toBeHidden();
+    await expect(page.locator('#results')).toBeHidden();
+    expect(apiCalled).toBe(false);
+  });
+
+  test('should allow submitting search after preset button click', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [createPR()] });
+
+    await page.locator('.preset-repo-btn[data-repo="microsoft/vscode"]').click();
+    await page.click('#searchButton');
+
+    await waitForResults(page);
+    await expect(page.locator('#totalPRs')).toContainText('1');
+  });
+
+  test('should have correct data-repo attributes', async ({ page }) => {
+    const buttons = page.locator('.preset-repo-btn');
+    await expect(buttons.nth(0)).toHaveAttribute('data-repo', 'microsoft/vscode');
+    await expect(buttons.nth(1)).toHaveAttribute('data-repo', 'microsoft/typespec');
+    await expect(buttons.nth(2)).toHaveAttribute('data-repo', 'Azure/azure-sdk-for-net');
+  });
+
+  test('should have type="button" to prevent form submission', async ({ page }) => {
+    const buttons = page.locator('.preset-repo-btn');
+    const count = await buttons.count();
+    for (let i = 0; i < count; i++) {
+      await expect(buttons.nth(i)).toHaveAttribute('type', 'button');
+    }
+  });
+});
+
+// ============================================================================
 // Dark Mode Tests
 // ============================================================================
 
