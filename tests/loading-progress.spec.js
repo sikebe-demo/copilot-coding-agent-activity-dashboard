@@ -130,7 +130,6 @@ test.describe('Loading Progress', () => {
     await waitForResults(page);
 
     // Intercept the loading title before second search to capture cache phase
-    const loadingTitleTexts = [];
     await page.evaluate(() => {
       const el = document.getElementById('loadingTitle');
       if (el) {
