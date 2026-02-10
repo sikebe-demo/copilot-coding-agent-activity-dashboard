@@ -42,7 +42,29 @@ test.describe('API Errors', () => {
     await submitSearch(page, { repo: 'test/private-repo' });
     await waitForError(page);
 
-    await expect(page.locator('#errorMessage')).toContainText(/Search query validation failed|check the repository name/i);
+    await expect(page.locator('#errorMessage')).toContainText(/Search query validation failed/i);
+  });
+
+  test('should show detailed error for 422 with cannot-be-searched message', async ({ page }) => {
+    await mockSearchAPI(page, {
+      status: 422,
+      headers: createRateLimitHeaders(4500),
+      body: {
+        message: 'Validation Failed',
+        errors: [{
+          message: 'The listed users and repositories cannot be searched either because the resources do not exist or you do not have permission to view them.',
+          resource: 'Search',
+          field: 'q',
+          code: 'invalid'
+        }]
+      }
+    });
+
+    await submitSearch(page, { repo: 'microsoft/vscode' });
+    await waitForError(page);
+
+    await expect(page.locator('#errorMessage')).toContainText(/could not be resolved/i);
+    await expect(page.locator('#errorMessage')).toContainText(/verify the repository name/i);
   });
 
   test('should show permission error for 403 when X-RateLimit-Remaining is not 0', async ({ page }) => {
