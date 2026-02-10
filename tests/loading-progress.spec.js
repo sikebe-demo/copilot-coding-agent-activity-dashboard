@@ -95,6 +95,9 @@ test.describe('Loading Progress', () => {
     // Verify progress text updates with fetched/total counts
     await expect(page.locator('#loadingProgressText')).toContainText(/\d+ \/ \d+/);
 
+    // Verify progress shows specific expected values (100 fetched out of 150 total after first page)
+    await expect(page.locator('#loadingProgressText')).toContainText('100 / 150', { timeout: 5000 });
+
     // Wait for completion and verify progress bar reached 100%
     await waitForResults(page);
   });
@@ -126,16 +129,29 @@ test.describe('Loading Progress', () => {
     await submitSearch(page);
     await waitForResults(page);
 
+    // Intercept the loading title before second search to capture cache phase
+    const loadingTitleTexts = [];
+    await page.evaluate(() => {
+      const el = document.getElementById('loadingTitle');
+      if (el) {
+        const observer = new MutationObserver(() => {
+          window.__loadingTitleTexts = window.__loadingTitleTexts || [];
+          window.__loadingTitleTexts.push(el.textContent);
+        });
+        observer.observe(el, { childList: true, characterData: true, subtree: true });
+      }
+    });
+
     // Second search should use cache
     await submitSearch(page);
+    await waitForResults(page);
 
     // Should show cached indicator in rate limit info
     await expect(page.locator('#rateLimitInfo')).toContainText('Cached');
 
-    // Verify loading phase shows cache message
-    // (cache loading is fast, so check after results are visible)
-    await waitForResults(page);
-    await expect(page.locator('#results')).toBeVisible();
+    // Verify loading phase showed cache message
+    const capturedTexts = await page.evaluate(() => window.__loadingTitleTexts || []);
+    expect(capturedTexts.some(t => t.includes('cache') || t.includes('Cache'))).toBeTruthy();
   });
 
   test('should update loading title for repository stats phase', async ({ page }) => {
