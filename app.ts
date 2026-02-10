@@ -94,6 +94,10 @@ const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
 const CACHE_VERSION = 'v2';
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
+// Default loading text (shared between index.html initial state and resetLoadingProgress)
+const DEFAULT_LOADING_TITLE = 'Fetching data...';
+const DEFAULT_LOADING_MESSAGE = 'Loading PR information from GitHub API';
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
@@ -1136,8 +1140,8 @@ function resetLoadingProgress(): void {
         progressBar.setAttribute('aria-valuenow', '0');
     }
     if (progressText) progressText.textContent = '';
-    if (loadingTitle) loadingTitle.textContent = 'Fetching data...';
-    if (loadingMessage) loadingMessage.textContent = 'Loading PR information from GitHub API';
+    if (loadingTitle) loadingTitle.textContent = DEFAULT_LOADING_TITLE;
+    if (loadingMessage) loadingMessage.textContent = DEFAULT_LOADING_MESSAGE;
 }
 
 function updateLoadingProgress(current: number, total: number, message: string): void {
