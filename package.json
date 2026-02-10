@@ -31,10 +31,10 @@
     "lucide": "^0.563.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.40.0",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.18",
-    "@types/node": "^25.0.10",
-    "autoprefixer": "^10.4.16",
+    "@types/node": "^25.2.2",
+    "autoprefixer": "^10.4.24",
     "http-server": "^14.1.1",
     "postcss": "^8.4.32",
     "tailwindcss": "^4.1.18",
