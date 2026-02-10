@@ -1131,7 +1131,10 @@ function resetLoadingProgress(): void {
     const loadingMessage = document.getElementById('loadingMessage');
 
     if (progressContainer) progressContainer.classList.add('hidden');
-    if (progressBar) progressBar.style.width = '0%';
+    if (progressBar) {
+        progressBar.style.width = '0%';
+        progressBar.setAttribute('aria-valuenow', '0');
+    }
     if (progressText) progressText.textContent = '';
     if (loadingTitle) loadingTitle.textContent = 'Fetching data...';
     if (loadingMessage) loadingMessage.textContent = 'Loading PR information from GitHub API';
@@ -1147,6 +1150,7 @@ function updateLoadingProgress(current: number, total: number, message: string):
     if (progressBar && total > 0) {
         const percent = Math.min(Math.round((current / total) * 100), 100);
         progressBar.style.width = `${percent}%`;
+        progressBar.setAttribute('aria-valuenow', String(percent));
     }
     if (progressText) progressText.textContent = `${current} / ${total}`;
     if (loadingMessage) loadingMessage.textContent = message;

@@ -67,23 +67,8 @@ test.describe('Loading Progress', () => {
           status: 200,
           headers: createRateLimitHeaders(),
           body: JSON.stringify({
-            total_count: prs.length,
-            incomplete_results: false,
-            items: pagePrs.map((pr, index) => ({
-              id: pr.id,
-              node_id: `PR_${pr.id}`,
-              number: pr.number,
-              title: pr.title,
-              body: '',
-              html_url: pr.html_url,
-              user: { login: 'copilot' },
-              state: pr.state,
-              created_at: pr.created_at,
-              updated_at: pr.created_at,
-              closed_at: null,
-              pull_request: { merged_at: pr.merged_at },
-              score: 1.0
-            }))
+            ...createSearchResponse(pagePrs),
+            total_count: prs.length
           })
         });
         return;
@@ -106,6 +91,12 @@ test.describe('Loading Progress', () => {
     // Wait for progress bar to become visible during pagination
     await expect(page.locator('#loadingProgress')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#loadingProgressBar')).toBeVisible();
+
+    // Verify progress text updates with fetched/total counts
+    await expect(page.locator('#loadingProgressText')).toContainText(/\d+ \/ \d+/);
+
+    // Wait for completion and verify progress bar reached 100%
+    await waitForResults(page);
   });
 
   test('should reset progress after successful load', async ({ page }) => {
@@ -140,26 +131,31 @@ test.describe('Loading Progress', () => {
 
     // Should show cached indicator in rate limit info
     await expect(page.locator('#rateLimitInfo')).toContainText('Cached');
+
+    // Verify loading phase shows cache message
+    // (cache loading is fast, so check after results are visible)
+    await waitForResults(page);
+    await expect(page.locator('#results')).toBeVisible();
   });
 
   test('should update loading title for repository stats phase', async ({ page }) => {
-    let phase = 0;
     await page.route('https://api.github.com/search/issues**', async route => {
-      phase++;
       const url = route.request().url();
 
       // Add delay to see phase changes
       await new Promise(resolve => setTimeout(resolve, 100));
 
       if (url.includes('author:app/copilot-swe-agent')) {
-        // Copilot PRs search
+        // Copilot PRs search - add delay to allow observing phase change
+        await new Promise(resolve => setTimeout(resolve, 200));
         await route.fulfill({
           status: 200,
           headers: createRateLimitHeaders(),
           body: JSON.stringify(createSearchResponse([createPR()]))
         });
       } else {
-        // All PRs count search
+        // All PRs count search - add delay so the phase title is observable
+        await new Promise(resolve => setTimeout(resolve, 500));
         await route.fulfill({
           status: 200,
           headers: createRateLimitHeaders(),
@@ -169,9 +165,11 @@ test.describe('Loading Progress', () => {
     });
 
     await submitSearch(page);
-    await waitForResults(page);
 
-    // Test passes if we can complete the search with phase updates
+    // Verify loading title updates to repository stats phase
+    await expect(page.locator('#loadingTitle')).toContainText('repository stats', { timeout: 5000 });
+
+    await waitForResults(page);
     await expect(page.locator('#results')).toBeVisible();
   });
 
@@ -184,9 +182,8 @@ test.describe('Loading Progress', () => {
     // Wait for loading modal to be visible first
     await page.waitForSelector('#loading:not(.hidden)', { state: 'visible', timeout: 5000 });
 
-    // Check loading elements are visible with the first real phase text
-    // (showLoading() sets "Fetching data..." but fetchCopilotPRsWithSearchAPI()
-    // immediately updates to "Fetching Copilot PRs..." synchronously before any await)
+    // Check loading elements are visible with the first user-visible phase text
+    // (initial phase title should be "Fetching Copilot PRs...")
     const loadingTitle = page.locator('#loadingTitle');
     const loadingMessage = page.locator('#loadingMessage');
 
