@@ -33,7 +33,7 @@ test.describe('Loading Progress', () => {
     await mockSearchAPI(page, { prs: [createPR()], delay: 300 });
     await submitSearch(page);
 
-    await expect(page.locator('#loadingTitle')).toContainText('Fetching');
+    await expect(page.locator('#loadingTitle')).toContainText('Fetching Copilot PRs');
   });
 
   test('should show progress bar for multiple pages of results', async ({ page }) => {
