@@ -466,25 +466,35 @@ test.describe('PR List', () => {
   });
 
   test('should handle PR with missing user.login property', async ({ page }) => {
-    const prs = [
-      createPR({
-        id: 1,
-        number: 1,
+    const rawResponse = {
+      total_count: 1,
+      incomplete_results: false,
+      items: [{
+        id: 2,
+        number: 2,
         title: 'PR with empty user',
         state: 'open',
-        user: {},
         created_at: getDaysAgoISO(5),
-        html_url: 'https://github.com/test/repo/pull/1',
-      }),
-    ];
+        user: {},
+        html_url: 'https://github.com/test/repo/pull/2',
+        pull_request: { merged_at: null },
+      }],
+    };
 
-    await mockSearchAPI(page, { prs });
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(rawResponse),
+      });
+    });
+
     await submitSearch(page, { repo: 'test/repo' });
     await waitForResults(page);
 
     const prList = page.locator('#prList');
     await expect(prList).toBeVisible();
-    await expect(prList.locator('div').first()).toBeVisible();
+    await expect(prList).toContainText('unknown');
   });
 
   test('should count open PR with merged_at only as merged, not as open', async ({ page }) => {

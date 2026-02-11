@@ -504,6 +504,11 @@ test.describe('Loading State', () => {
     await waitForResults(page);
     const prList = page.locator('#prList');
     await expect(prList).toBeVisible();
+    // Ensure only the fresh results from the second search are displayed
+    await expect(prList.locator('text=Fresh PR')).toBeVisible();
+    await expect(prList.locator('text=Stale PR')).toHaveCount(0);
+    // Ensure both searches were actually issued
+    expect(callCount).toBeGreaterThanOrEqual(2);
   });
 
   test('should update all stats when searching different repos consecutively', async ({ page }) => {

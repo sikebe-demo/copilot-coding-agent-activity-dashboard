@@ -276,7 +276,7 @@ test.describe('Caching', () => {
     await expect(page.locator('#prList')).toContainText('Fresh Data');
   });
 
-  test('should not collide cache keys for different owner/repo combinations', async ({ page }) => {
+  test('should reject invalid repo format with extra path segments', async ({ page }) => {
     await page.route('https://api.github.com/search/issues**', async route => {
       await route.fulfill({
         status: 200,

@@ -16,7 +16,7 @@ interface PullRequest {
     state: 'open' | 'closed';
     merged_at: string | null;
     created_at: string;
-    user: GitHubUser;
+    user: GitHubUser | null;
     html_url: string;
 }
 
@@ -73,7 +73,7 @@ interface SearchIssueItem {
     title: string;
     state: 'open' | 'closed';
     created_at: string;
-    user: GitHubUser;
+    user: GitHubUser | null;
     html_url: string;
     pull_request?: {
         merged_at: string | null;
@@ -578,7 +578,7 @@ async function fetchAllPRCounts(
 
     const counts: AllPRCounts = { ...defaultCounts };
     // Track which queries succeeded to ensure correct closed calculation
-    const succeeded = new Set<string>();
+    const succeeded = new Set<(typeof queries)[number]['key']>();
 
     try {
         // Execute all API calls in parallel using Promise.allSettled
