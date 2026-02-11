@@ -4,9 +4,12 @@ import Chart from 'chart.js/auto';
 // Timer for rate limit countdown
 let rateLimitCountdownInterval: number | null = null;
 
+// Request sequencing: ignore stale responses from earlier searches
+let currentRequestId = 0;
+
 // Type definitions
 interface GitHubUser {
-    login: string;
+    login?: string;
 }
 
 interface PullRequest {
@@ -213,16 +216,24 @@ async function handleFormSubmit(e: Event): Promise<void> {
     hideResults();
     hideRateLimitInfo();
 
+    const requestId = ++currentRequestId;
+
     try {
         const result = await fetchCopilotPRsWithCache(owner, repo, fromDate, toDate, token);
+        // Ignore stale responses from earlier searches
+        if (requestId !== currentRequestId) return;
         displayResults(result.prs, fromDate, toDate, result.allPRCounts);
         if (result.rateLimitInfo) {
             displayRateLimitInfo(result.rateLimitInfo, result.fromCache);
         }
     } catch (error) {
+        // Ignore errors from stale requests
+        if (requestId !== currentRequestId) return;
         showError(error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
-        hideLoading();
+        if (requestId === currentRequestId) {
+            hideLoading();
+        }
     }
 }
 

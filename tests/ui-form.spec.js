@@ -419,23 +419,38 @@ test.describe('Loading State', () => {
   });
 
   test('should set toDate to local today, not UTC today', async ({ page }) => {
-    // Freeze the clock to avoid flakiness around midnight
-    const fixedTime = new Date('2025-06-15T12:00:00');
+    // Freeze the clock to a time near midnight (explicit UTC) to reliably
+    // distinguish local today vs UTC today across time zones.
+    const fixedTime = new Date('2025-06-15T00:30:00Z');
     await page.clock.install({ time: fixedTime });
     await page.goto('/');
 
-    const expectedToday = '2025-06-15';
+    const expectedToday = await page.evaluate(() => {
+      const d = new Date();
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    });
     const toDateValue = await page.inputValue('#toDate');
     expect(toDateValue).toBe(expectedToday);
   });
 
   test('should set fromDate to 30 days before local today', async ({ page }) => {
-    // Freeze the clock to avoid flakiness around midnight
-    const fixedTime = new Date('2025-06-15T12:00:00');
+    // Freeze the clock to a time near midnight (explicit UTC) to reliably
+    // distinguish local dates vs UTC dates across time zones.
+    const fixedTime = new Date('2025-06-15T00:30:00Z');
     await page.clock.install({ time: fixedTime });
     await page.goto('/');
 
-    const expectedFrom = '2025-05-16';
+    const expectedFrom = await page.evaluate(() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    });
     const fromDateValue = await page.inputValue('#fromDate');
     expect(fromDateValue).toBe(expectedFrom);
   });
