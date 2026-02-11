@@ -1,10 +1,14 @@
 import { test, expect } from '@playwright/test';
 import {
   createPR,
+  createPRs,
+  createSearchResponse,
+  createRateLimitHeaders,
   mockSearchAPI,
   submitSearch,
   waitForResults,
-  waitForError
+  waitForError,
+  getDaysAgoISO
 } from './helpers.js';
 
 // ============================================================================
@@ -412,5 +416,171 @@ test.describe('Loading State', () => {
     await submitSearch(page, { repo: 'test/repo2' });
 
     await expect(page.locator('#results')).toBeHidden();
+  });
+
+  test('should set toDate to local today, not UTC today', async ({ page }) => {
+    const localToday = await page.evaluate(() => {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    });
+
+    const toDateValue = await page.inputValue('#toDate');
+    expect(toDateValue).toBe(localToday);
+  });
+
+  test('should set fromDate to 30 days before local today', async ({ page }) => {
+    const expected = await page.evaluate(() => {
+      const now = new Date();
+      now.setDate(now.getDate() - 30);
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    });
+
+    const fromDateValue = await page.inputValue('#fromDate');
+    expect(fromDateValue).toBe(expected);
+  });
+
+  test('should handle rapid double-submit without corrupted display', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Test PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse(prs)),
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#results:not(.hidden)', { timeout: 15000 });
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('#results')).toBeVisible();
+  });
+
+  test('should not show stale results from first search when second search completes first', async ({ page }) => {
+    const prsFirst = createPRs([
+      { title: 'Stale PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+    const prsSecond = createPRs([
+      { title: 'Fresh PR', state: 'open', created_at: getDaysAgoISO(2) },
+    ]);
+
+    let callCount = 0;
+    await page.route('https://api.github.com/search/issues**', async route => {
+      callCount++;
+      const url = route.request().url();
+      if (url.includes('first-owner')) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify(createSearchResponse(prsFirst)),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify(createSearchResponse(prsSecond)),
+        });
+      }
+    });
+
+    await page.fill('#repoInput', 'first-owner/repo');
+    await page.click('#searchButton');
+    await page.fill('#repoInput', 'second-owner/repo');
+    await page.click('#searchButton');
+
+    await waitForResults(page);
+    const prList = page.locator('#prList');
+    await expect(prList).toBeVisible();
+  });
+
+  test('should update all stats when searching different repos consecutively', async ({ page }) => {
+    const prsRepo1 = createPRs([
+      { title: 'Repo1 PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+    const prsRepo2 = createPRs([
+      { title: 'Repo2 PR 1', state: 'closed', merged_at: getDaysAgoISO(3), created_at: getDaysAgoISO(5) },
+      { title: 'Repo2 PR 2', state: 'closed', merged_at: getDaysAgoISO(2), created_at: getDaysAgoISO(4) },
+      { title: 'Repo2 PR 3', state: 'open', created_at: getDaysAgoISO(1) },
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      const url = decodeURIComponent(route.request().url());
+      if (url.includes('repo1')) {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify(createSearchResponse(prsRepo1)),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify(createSearchResponse(prsRepo2)),
+        });
+      }
+    });
+
+    await submitSearch(page, { repo: 'owner/repo1' });
+    await waitForResults(page);
+    const totalAfterFirst = await page.locator('#totalPRs').textContent();
+    expect(totalAfterFirst).toContain('1');
+
+    await submitSearch(page, { repo: 'owner/repo2' });
+    await waitForResults(page);
+    const totalAfterSecond = await page.locator('#totalPRs').textContent();
+    expect(totalAfterSecond).toContain('3');
+
+    await expect(page.locator('#mergeRateValue')).toHaveText('67%');
+  });
+
+  test('should allow same from and to date (not show error)', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Same Day PR', state: 'open', created_at: '2024-06-15T10:00:00Z' },
+    ]);
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, {
+      repo: 'test/repo',
+      fromDate: '2024-06-15',
+      toDate: '2024-06-15',
+    });
+
+    await waitForResults(page);
+    await expect(page.locator('#error')).toBeHidden();
+  });
+
+  test('should accept repo names with consecutive dots', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [] });
+    await submitSearch(page, { repo: 'owner/my..repo' });
+
+    const error = page.locator('#error');
+    if (await error.isVisible()) {
+      const msg = await page.locator('#errorMessage').textContent();
+      expect(msg).not.toContain('Names can only contain');
+    }
+  });
+
+  test('should accept repo names starting with dot', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [] });
+    await submitSearch(page, { repo: 'owner/.hidden' });
+
+    const error = page.locator('#error');
+    if (await error.isVisible()) {
+      const msg = await page.locator('#errorMessage').textContent();
+      expect(msg).not.toContain('Names can only contain');
+    }
   });
 });

@@ -496,4 +496,160 @@ test.describe('Large Results Handling', () => {
 
     await expect(page.locator('#totalPRs')).toContainText('150');
   });
+
+  test('should reset closed count to 0 when merged query fails', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Merged PR', state: 'closed', merged_at: getDaysAgoISO(3), created_at: getDaysAgoISO(5) },
+      { title: 'Closed PR', state: 'closed', created_at: getDaysAgoISO(4) },
+      { title: 'Open PR', state: 'open', created_at: getDaysAgoISO(2) },
+    ]);
+
+    let mainQueryHandled = false;
+    await page.route('https://api.github.com/search/issues**', async route => {
+      const url = route.request().url();
+      const decodedUrl = decodeURIComponent(url);
+
+      if (!mainQueryHandled && decodedUrl.includes('author:app/copilot-swe-agent')) {
+        mainQueryHandled = true;
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify(createSearchResponse(prs)),
+        });
+        return;
+      }
+
+      if (decodedUrl.includes('is:merged')) {
+        await route.fulfill({
+          status: 500,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify({ message: 'Internal Server Error' }),
+        });
+      } else if (decodedUrl.includes('is:closed')) {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify({ total_count: 10, incomplete_results: false, items: [] }),
+        });
+      } else if (decodedUrl.includes('is:open')) {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify({ total_count: 5, incomplete_results: false, items: [] }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify({ total_count: 15, incomplete_results: false, items: [] }),
+        });
+      }
+    });
+
+    await submitSearch(page, { repo: 'test/repo' });
+    await waitForResults(page);
+
+    const closedPRs = page.locator('#closedPRs');
+    const closedText = await closedPRs.textContent();
+    expect(closedText).toContain('/ -');
+  });
+
+  test('should include Authorization header when token is provided', async ({ page }) => {
+    let capturedHeaders = null;
+    const prs = createPRs([
+      { title: 'Auth PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      capturedHeaders = route.request().headers();
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse(prs)),
+      });
+    });
+
+    await submitSearch(page, { repo: 'test/repo', token: 'ghp_testtoken123' });
+    await waitForResults(page);
+
+    expect(capturedHeaders).not.toBeNull();
+    expect(capturedHeaders['authorization']).toBe('Bearer ghp_testtoken123');
+  });
+
+  test('should NOT include Authorization header when token is empty', async ({ page }) => {
+    let capturedHeaders = null;
+    const prs = createPRs([
+      { title: 'No Auth PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      capturedHeaders = route.request().headers();
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse(prs)),
+      });
+    });
+
+    await submitSearch(page, { repo: 'test/repo' });
+    await waitForResults(page);
+
+    expect(capturedHeaders).not.toBeNull();
+    expect(capturedHeaders['authorization']).toBeUndefined();
+  });
+
+  test('should treat whitespace-only token as no token', async ({ page }) => {
+    let capturedHeaders = null;
+    const prs = createPRs([
+      { title: 'Test PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      capturedHeaders = route.request().headers();
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse(prs)),
+      });
+    });
+
+    await submitSearch(page, { repo: 'test/repo', token: '   ' });
+    await waitForResults(page);
+
+    expect(capturedHeaders).not.toBeNull();
+    expect(capturedHeaders['authorization']).toBeUndefined();
+  });
+
+  test('should clear error and show results when retry succeeds', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Success PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      const url = decodeURIComponent(route.request().url());
+      if (url.includes('fail-repo')) {
+        await route.fulfill({
+          status: 500,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify({ message: 'Internal Server Error' }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify(createSearchResponse(prs)),
+        });
+      }
+    });
+
+    await submitSearch(page, { repo: 'test/fail-repo' });
+    await waitForError(page);
+    await expect(page.locator('#error')).toBeVisible();
+
+    await submitSearch(page, { repo: 'test/success-repo' });
+    await waitForResults(page);
+
+    await expect(page.locator('#error')).toBeHidden();
+    await expect(page.locator('#results')).toBeVisible();
+  });
 });
