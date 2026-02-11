@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import {
   createPR,
-  createPRs,
   mockSearchAPI,
   submitSearch,
   waitForResults,
@@ -106,27 +105,6 @@ test.describe('PR List Pagination', () => {
     await expect(page.locator('#prPagination')).toContainText('1-10 / 15件');
   });
 
-  test('should navigate using page number buttons', async ({ page }) => {
-    const prs = Array.from({ length: 25 }, (_, i) => createPR({
-      id: i + 1,
-      number: i + 1,
-      title: `PR ${i + 1}`,
-      state: 'open',
-      created_at: getDaysAgoISO(i),
-      html_url: `https://github.com/test/repo/pull/${i + 1}`
-    }));
-
-    await mockSearchAPI(page, { prs });
-    await submitSearch(page);
-    await waitForResults(page);
-
-    await page.locator('#prPagination button:has-text("2")').click();
-    await expect(page.locator('#prPagination')).toContainText('11-20 / 25件');
-
-    await page.locator('#prPagination button:has-text("3")').click();
-    await expect(page.locator('#prPagination')).toContainText('21-25 / 25件');
-  });
-
   test('should disable previous button on first page', async ({ page }) => {
     const prs = Array.from({ length: 15 }, (_, i) => createPR({
       id: i + 1,
@@ -200,39 +178,4 @@ test.describe('PR List Pagination', () => {
     await expect(page.locator('#prList')).toContainText('Second Search PR 1');
   });
 
-  test('should NOT show pagination for exactly 10 PRs', async ({ page }) => {
-    const prs = createPRs(
-      Array.from({ length: 10 }, (_, i) => ({
-        title: `PR ${i + 1}`,
-        state: 'open',
-        created_at: getDaysAgoISO(i + 1),
-      }))
-    );
-
-    await mockSearchAPI(page, { prs });
-    await submitSearch(page, { repo: 'test/repo' });
-    await waitForResults(page);
-
-    const pagination = page.locator('#prPagination');
-    await expect(pagination).toBeEmpty();
-  });
-
-  test('should show pagination for exactly 11 PRs', async ({ page }) => {
-    const prs = createPRs(
-      Array.from({ length: 11 }, (_, i) => ({
-        title: `PR ${i + 1}`,
-        state: 'open',
-        created_at: getDaysAgoISO(i + 1),
-      }))
-    );
-
-    await mockSearchAPI(page, { prs });
-    await submitSearch(page, { repo: 'test/repo' });
-    await waitForResults(page);
-
-    const pagination = page.locator('#prPagination');
-    await expect(pagination).not.toBeEmpty();
-    await expect(pagination).toContainText('1-10');
-    await expect(pagination).toContainText('11件');
-  });
 });

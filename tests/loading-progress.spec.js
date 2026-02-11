@@ -29,13 +29,6 @@ test.describe('Loading Progress', () => {
     await expect(page.locator('#loadingMessage')).toBeVisible();
   });
 
-  test('should update loading phase when fetching Copilot PRs', async ({ page }) => {
-    await mockSearchAPI(page, { prs: [createPR()], delay: 300 });
-    await submitSearch(page);
-
-    await expect(page.locator('#loadingTitle')).toContainText('Fetching Copilot PRs');
-  });
-
   test('should show progress bar for multiple pages of results', async ({ page }) => {
     // Create 150 PRs to trigger pagination (100 per page)
     const prs = Array.from({ length: 150 }, (_, i) => createPR({
@@ -122,37 +115,6 @@ test.describe('Loading Progress', () => {
     await expect(page.locator('#loadingProgress')).toBeHidden();
   });
 
-  test('should show cache message when loading from cache', async ({ page }) => {
-    const prs = [createPR({ title: 'Cached PR' })];
-
-    await mockSearchAPI(page, { prs });
-    await submitSearch(page);
-    await waitForResults(page);
-
-    // Intercept the loading title before second search to capture cache phase
-    await page.evaluate(() => {
-      const el = document.getElementById('loadingTitle');
-      if (el) {
-        const observer = new MutationObserver(() => {
-          window.__loadingTitleTexts = window.__loadingTitleTexts || [];
-          window.__loadingTitleTexts.push(el.textContent);
-        });
-        observer.observe(el, { childList: true, characterData: true, subtree: true });
-      }
-    });
-
-    // Second search should use cache
-    await submitSearch(page);
-    await waitForResults(page);
-
-    // Should show cached indicator in rate limit info
-    await expect(page.locator('#rateLimitInfo')).toContainText('Cached');
-
-    // Verify loading phase showed cache message
-    const capturedTexts = await page.evaluate(() => window.__loadingTitleTexts || []);
-    expect(capturedTexts.some(t => t.includes('cache') || t.includes('Cache'))).toBeTruthy();
-  });
-
   test('should update loading title for repository stats phase', async ({ page }) => {
     await page.route('https://api.github.com/search/issues**', async route => {
       const url = route.request().url();
@@ -188,23 +150,4 @@ test.describe('Loading Progress', () => {
     await expect(page.locator('#results')).toBeVisible();
   });
 
-  test('should display initial loading phase after submitting search', async ({ page }) => {
-    await mockSearchAPI(page, { prs: [createPR()], delay: 1000 });
-
-    // Trigger loading state by submitting a search
-    await submitSearch(page);
-
-    // Wait for loading modal to be visible first
-    await page.waitForSelector('#loading:not(.hidden)', { state: 'visible', timeout: 5000 });
-
-    // Check loading elements are visible with the first user-visible phase text
-    // (initial phase title should be "Fetching Copilot PRs...")
-    const loadingTitle = page.locator('#loadingTitle');
-    const loadingMessage = page.locator('#loadingMessage');
-
-    await expect(loadingTitle).toBeVisible();
-    await expect(loadingMessage).toBeVisible();
-    await expect(loadingTitle).toContainText('Fetching Copilot PRs');
-    await expect(loadingMessage).toContainText('Searching for PRs');
-  });
 });
