@@ -419,30 +419,25 @@ test.describe('Loading State', () => {
   });
 
   test('should set toDate to local today, not UTC today', async ({ page }) => {
-    const localToday = await page.evaluate(() => {
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    });
+    // Freeze the clock to avoid flakiness around midnight
+    const fixedTime = new Date('2025-06-15T12:00:00');
+    await page.clock.install({ time: fixedTime });
+    await page.goto('/');
 
+    const expectedToday = '2025-06-15';
     const toDateValue = await page.inputValue('#toDate');
-    expect(toDateValue).toBe(localToday);
+    expect(toDateValue).toBe(expectedToday);
   });
 
   test('should set fromDate to 30 days before local today', async ({ page }) => {
-    const expected = await page.evaluate(() => {
-      const now = new Date();
-      now.setDate(now.getDate() - 30);
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    });
+    // Freeze the clock to avoid flakiness around midnight
+    const fixedTime = new Date('2025-06-15T12:00:00');
+    await page.clock.install({ time: fixedTime });
+    await page.goto('/');
 
+    const expectedFrom = '2025-05-16';
     const fromDateValue = await page.inputValue('#fromDate');
-    expect(fromDateValue).toBe(expected);
+    expect(fromDateValue).toBe(expectedFrom);
   });
 
   test('should handle rapid double-submit without corrupted display', async ({ page }) => {
@@ -509,6 +504,12 @@ test.describe('Loading State', () => {
     await expect(prList.locator('text=Stale PR')).toHaveCount(0);
     // Ensure both searches were actually issued
     expect(callCount).toBeGreaterThanOrEqual(2);
+
+    // Wait for the delayed first search response to resolve, then re-assert
+    // that stale results did not overwrite the fresh ones
+    await page.waitForTimeout(2500);
+    await expect(prList.locator('text=Fresh PR')).toBeVisible();
+    await expect(prList.locator('text=Stale PR')).toHaveCount(0);
   });
 
   test('should update all stats when searching different repos consecutively', async ({ page }) => {
