@@ -571,21 +571,15 @@ test.describe('Loading State', () => {
     await mockSearchAPI(page, { prs: [] });
     await submitSearch(page, { repo: 'owner/my..repo' });
 
-    const error = page.locator('#error');
-    if (await error.isVisible()) {
-      const msg = await page.locator('#errorMessage').textContent();
-      expect(msg).not.toContain('Names can only contain');
-    }
+    await waitForResults(page);
+    await expect(page.locator('#error')).toBeHidden();
   });
 
   test('should accept repo names starting with dot', async ({ page }) => {
     await mockSearchAPI(page, { prs: [] });
     await submitSearch(page, { repo: 'owner/.hidden' });
 
-    const error = page.locator('#error');
-    if (await error.isVisible()) {
-      const msg = await page.locator('#errorMessage').textContent();
-      expect(msg).not.toContain('Names can only contain');
-    }
+    await waitForResults(page);
+    await expect(page.locator('#error')).toBeHidden();
   });
 });
