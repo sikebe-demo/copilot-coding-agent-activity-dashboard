@@ -4,9 +4,12 @@ import Chart from 'chart.js/auto';
 // Timer for rate limit countdown
 let rateLimitCountdownInterval: number | null = null;
 
+// Request sequencing: ignore stale responses from earlier searches
+let currentRequestId = 0;
+
 // Type definitions
 interface GitHubUser {
-    login: string;
+    login?: string;
 }
 
 interface PullRequest {
@@ -16,7 +19,7 @@ interface PullRequest {
     state: 'open' | 'closed';
     merged_at: string | null;
     created_at: string;
-    user: GitHubUser;
+    user: GitHubUser | null;
     html_url: string;
 }
 
@@ -73,7 +76,7 @@ interface SearchIssueItem {
     title: string;
     state: 'open' | 'closed';
     created_at: string;
-    user: GitHubUser;
+    user: GitHubUser | null;
     html_url: string;
     pull_request?: {
         merged_at: string | null;
@@ -213,16 +216,24 @@ async function handleFormSubmit(e: Event): Promise<void> {
     hideResults();
     hideRateLimitInfo();
 
+    const requestId = ++currentRequestId;
+
     try {
         const result = await fetchCopilotPRsWithCache(owner, repo, fromDate, toDate, token);
+        // Ignore stale responses from earlier searches
+        if (requestId !== currentRequestId) return;
         displayResults(result.prs, fromDate, toDate, result.allPRCounts);
         if (result.rateLimitInfo) {
             displayRateLimitInfo(result.rateLimitInfo, result.fromCache);
         }
     } catch (error) {
+        // Ignore errors from stale requests
+        if (requestId !== currentRequestId) return;
         showError(error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
-        hideLoading();
+        if (requestId === currentRequestId) {
+            hideLoading();
+        }
     }
 }
 
@@ -577,6 +588,8 @@ async function fetchAllPRCounts(
     ];
 
     const counts: AllPRCounts = { ...defaultCounts };
+    // Track which queries succeeded to ensure correct closed calculation
+    const succeeded = new Set<(typeof queries)[number]['key']>();
 
     try {
         // Execute all API calls in parallel using Promise.allSettled
@@ -610,12 +623,22 @@ async function fetchAllPRCounts(
 
             const searchResponse: SearchResponse = await response.json();
             counts[key] = searchResponse.total_count;
+            succeeded.add(key);
         }
 
         // Adjust closed count to represent only "closed but not merged" PRs:
         // closed_not_merged = closed (from API, includes merged + unmerged) - merged
+        // Only adjust if BOTH closed and merged queries succeeded; otherwise the
+        // subtraction would produce an incorrect value.
         // NOTE: After this line, counts.closed represents "closed not merged" PRs.
-        counts.closed = Math.max(0, counts.closed - counts.merged);
+        if (succeeded.has('closed') && succeeded.has('merged')) {
+            counts.closed = Math.max(0, counts.closed - counts.merged);
+        } else if (succeeded.has('closed') && !succeeded.has('merged')) {
+            // Closed query succeeded but merged failed — we cannot reliably
+            // compute "closed not merged", so reset to 0 to avoid showing a
+            // misleading number that includes merged PRs.
+            counts.closed = 0;
+        }
 
         return { counts, rateLimitInfo };
     } catch (error) {
@@ -628,7 +651,7 @@ async function fetchAllPRCounts(
 function displayResults(prs: PullRequest[], fromDate: string, toDate: string, allPRCounts: AllPRCounts): void {
     const merged = prs.filter(pr => pr.merged_at !== null);
     const closed = prs.filter(pr => pr.state === 'closed' && pr.merged_at === null);
-    const open = prs.filter(pr => pr.state === 'open');
+    const open = prs.filter(pr => pr.state === 'open' && pr.merged_at === null);
 
     const mergeRate = prs.length > 0
         ? Math.round((merged.length / prs.length) * 100)
@@ -946,7 +969,7 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                         <circle cx="12" cy="7" r="4"></circle>
                     </svg>
-                    ${escapeHtml(pr.user.login)}
+                    ${escapeHtml(pr.user?.login ?? 'unknown')}
                 </span>
                 <span class="flex items-center gap-1">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

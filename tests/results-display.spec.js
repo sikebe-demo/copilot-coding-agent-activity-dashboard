@@ -205,6 +205,39 @@ test.describe('Results Display', () => {
     await expect(page.locator('#mergedPRs')).toContainText('0');
     await expect(page.locator('#prList')).toContainText('Closed');
   });
+
+  test('should handle same from and to date correctly', async ({ page }) => {
+    const date = '2024-06-15';
+    const prs = createPRs([
+      { title: 'Same day PR', state: 'open', created_at: `${date}T10:00:00Z` },
+    ]);
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, { repo: 'test/repo', fromDate: date, toDate: date });
+    await waitForResults(page);
+
+    const totalPRs = page.locator('#totalPRs');
+    await expect(totalPRs).toContainText('1');
+  });
+
+  test('should show 100% merge rate when all PRs are merged', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Merged 1', state: 'closed', merged_at: getDaysAgoISO(3), created_at: getDaysAgoISO(5) },
+      { title: 'Merged 2', state: 'closed', merged_at: getDaysAgoISO(2), created_at: getDaysAgoISO(4) },
+      { title: 'Merged 3', state: 'closed', merged_at: getDaysAgoISO(1), created_at: getDaysAgoISO(3) },
+    ]);
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, { repo: 'test/repo' });
+    await waitForResults(page);
+
+    await expect(page.locator('#mergeRateValue')).toHaveText('100%');
+    await expect(page.locator('#mergeRateText')).toHaveText('100%');
+
+    const bar = page.locator('#mergeRateBar');
+    const width = await bar.evaluate(el => el.style.width);
+    expect(width).toBe('100%');
+  });
 });
 
 // ============================================================================
@@ -399,6 +432,117 @@ test.describe('PR List', () => {
     await expect(page.locator('#openPRs')).toContainText('1');
     await expect(page.locator('#prList')).toContainText('Open');
   });
+
+  test('should handle PR with null user without crashing', async ({ page }) => {
+    const rawResponse = {
+      total_count: 1,
+      incomplete_results: false,
+      items: [{
+        id: 1,
+        number: 1,
+        title: 'PR from deleted user',
+        state: 'open',
+        created_at: getDaysAgoISO(5),
+        user: null,
+        html_url: 'https://github.com/test/repo/pull/1',
+        pull_request: { merged_at: null },
+      }],
+    };
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(rawResponse),
+      });
+    });
+
+    await submitSearch(page, { repo: 'test/repo' });
+    await waitForResults(page);
+
+    const prList = page.locator('#prList');
+    await expect(prList).toBeVisible();
+    await expect(prList).toContainText('unknown');
+  });
+
+  test('should handle PR with missing user.login property', async ({ page }) => {
+    const rawResponse = {
+      total_count: 1,
+      incomplete_results: false,
+      items: [{
+        id: 2,
+        number: 2,
+        title: 'PR with empty user',
+        state: 'open',
+        created_at: getDaysAgoISO(5),
+        user: {},
+        html_url: 'https://github.com/test/repo/pull/2',
+        pull_request: { merged_at: null },
+      }],
+    };
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(rawResponse),
+      });
+    });
+
+    await submitSearch(page, { repo: 'test/repo' });
+    await waitForResults(page);
+
+    const prList = page.locator('#prList');
+    await expect(prList).toBeVisible();
+    await expect(prList).toContainText('unknown');
+  });
+
+  test('should count open PR with merged_at only as merged, not as open', async ({ page }) => {
+    const prs = createPRs([
+      {
+        title: 'Inconsistent PR',
+        state: 'open',
+        merged_at: getDaysAgoISO(3),
+        created_at: getDaysAgoISO(5),
+      },
+    ]);
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, { repo: 'test/repo' });
+    await waitForResults(page);
+
+    const mergedPRs = page.locator('#mergedPRs');
+    const mergedText = await mergedPRs.textContent();
+    expect(mergedText).toContain('1');
+
+    const openPRs = page.locator('#openPRs');
+    const openText = await openPRs.textContent();
+    expect(openText).toMatch(/^0/);
+
+    const prList = page.locator('#prList');
+    await expect(prList).toContainText('Merged');
+  });
+
+  test('should escape HTML in user login', async ({ page }) => {
+    const prs = [
+      createPR({
+        title: 'Normal PR',
+        state: 'open',
+        user: { login: '<script>alert("xss")</script>' },
+        created_at: getDaysAgoISO(5),
+        html_url: 'https://github.com/test/repo/pull/1',
+      }),
+    ];
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, { repo: 'test/repo' });
+    await waitForResults(page);
+
+    const prList = page.locator('#prList');
+    const content = await prList.innerHTML();
+    expect(content).not.toContain('<script>');
+    expect(content).toContain('&lt;script&gt;');
+  });
 });
 
 // ============================================================================
@@ -470,5 +614,43 @@ test.describe('Chart', () => {
 
     const canvas = page.locator('#prChart canvas');
     await expect(canvas).toBeVisible();
+  });
+
+  test('should handle 365-day date range without crashing', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Old PR', state: 'closed', merged_at: '2023-06-15T10:00:00Z', created_at: '2023-06-15T10:00:00Z' },
+      { title: 'Recent PR', state: 'open', created_at: '2024-06-10T10:00:00Z' },
+    ]);
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, {
+      repo: 'test/repo',
+      fromDate: '2023-06-01',
+      toDate: '2024-05-31',
+    });
+    await waitForResults(page);
+
+    const chart = page.locator('#prChart canvas');
+    await expect(chart).toBeVisible();
+  });
+
+  test('should correctly stack multiple PRs of different status on same day', async ({ page }) => {
+    const date = '2024-06-15';
+    const prs = createPRs([
+      { title: 'Merged', state: 'closed', merged_at: `${date}T15:00:00Z`, created_at: `${date}T10:00:00Z` },
+      { title: 'Closed', state: 'closed', created_at: `${date}T11:00:00Z` },
+      { title: 'Open', state: 'open', created_at: `${date}T12:00:00Z` },
+    ]);
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, { repo: 'test/repo', fromDate: date, toDate: date });
+    await waitForResults(page);
+
+    const totalPRs = page.locator('#totalPRs');
+    const totalText = await totalPRs.textContent();
+    expect(totalText).toContain('3');
+
+    const chart = page.locator('#prChart canvas');
+    await expect(chart).toBeVisible();
   });
 });

@@ -275,4 +275,20 @@ test.describe('Caching', () => {
 
     await expect(page.locator('#prList')).toContainText('Fresh Data');
   });
+
+  test('should reject invalid repo format with extra path segments', async ({ page }) => {
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([])),
+      });
+    });
+
+    await submitSearch(page, { repo: 'owner/repo/extra' });
+    const error = page.locator('#error');
+    await expect(error).toBeVisible();
+    const errorMessage = await page.locator('#errorMessage').textContent();
+    expect(errorMessage).toContain('owner/repo');
+  });
 });

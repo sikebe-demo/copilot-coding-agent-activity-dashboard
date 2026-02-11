@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
   createPR,
+  createPRs,
   mockSearchAPI,
   submitSearch,
   waitForResults,
@@ -197,5 +198,41 @@ test.describe('PR List Pagination', () => {
 
     await expect(page.locator('#prPagination')).toContainText('1-10 / 12件');
     await expect(page.locator('#prList')).toContainText('Second Search PR 1');
+  });
+
+  test('should NOT show pagination for exactly 10 PRs', async ({ page }) => {
+    const prs = createPRs(
+      Array.from({ length: 10 }, (_, i) => ({
+        title: `PR ${i + 1}`,
+        state: 'open',
+        created_at: getDaysAgoISO(i + 1),
+      }))
+    );
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, { repo: 'test/repo' });
+    await waitForResults(page);
+
+    const pagination = page.locator('#prPagination');
+    await expect(pagination).toBeEmpty();
+  });
+
+  test('should show pagination for exactly 11 PRs', async ({ page }) => {
+    const prs = createPRs(
+      Array.from({ length: 11 }, (_, i) => ({
+        title: `PR ${i + 1}`,
+        state: 'open',
+        created_at: getDaysAgoISO(i + 1),
+      }))
+    );
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, { repo: 'test/repo' });
+    await waitForResults(page);
+
+    const pagination = page.locator('#prPagination');
+    await expect(pagination).not.toBeEmpty();
+    await expect(pagination).toContainText('1-10');
+    await expect(pagination).toContainText('11件');
   });
 });

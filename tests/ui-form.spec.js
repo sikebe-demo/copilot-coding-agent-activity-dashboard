@@ -1,10 +1,14 @@
 import { test, expect } from '@playwright/test';
 import {
   createPR,
+  createPRs,
+  createSearchResponse,
+  createRateLimitHeaders,
   mockSearchAPI,
   submitSearch,
   waitForResults,
-  waitForError
+  waitForError,
+  getDaysAgoISO
 } from './helpers.js';
 
 // ============================================================================
@@ -412,5 +416,191 @@ test.describe('Loading State', () => {
     await submitSearch(page, { repo: 'test/repo2' });
 
     await expect(page.locator('#results')).toBeHidden();
+  });
+
+  test('should set toDate to local today, not UTC today', async ({ page }) => {
+    // Freeze the clock to a time near midnight (explicit UTC) to reliably
+    // distinguish local today vs UTC today across time zones.
+    const fixedTime = new Date('2025-06-15T00:30:00Z');
+    await page.clock.install({ time: fixedTime });
+    await page.goto('/');
+
+    const expectedToday = await page.evaluate(() => {
+      const d = new Date();
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    });
+    const toDateValue = await page.inputValue('#toDate');
+    expect(toDateValue).toBe(expectedToday);
+  });
+
+  test('should set fromDate to 30 days before local today', async ({ page }) => {
+    // Freeze the clock to a time near midnight (explicit UTC) to reliably
+    // distinguish local dates vs UTC dates across time zones.
+    const fixedTime = new Date('2025-06-15T00:30:00Z');
+    await page.clock.install({ time: fixedTime });
+    await page.goto('/');
+
+    const expectedFrom = await page.evaluate(() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    });
+    const fromDateValue = await page.inputValue('#fromDate');
+    expect(fromDateValue).toBe(expectedFrom);
+  });
+
+  test('should handle rapid double-submit without corrupted display', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Test PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse(prs)),
+      });
+    });
+
+    await page.fill('#repoInput', 'test/repo');
+    await page.click('#searchButton');
+    await page.click('#searchButton');
+
+    await page.waitForSelector('#results:not(.hidden)', { timeout: 15000 });
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('#results')).toBeVisible();
+  });
+
+  test('should not show stale results from first search when second search completes first', async ({ page }) => {
+    const prsFirst = createPRs([
+      { title: 'Stale PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+    const prsSecond = createPRs([
+      { title: 'Fresh PR', state: 'open', created_at: getDaysAgoISO(2) },
+    ]);
+
+    let callCount = 0;
+    const firstOwnerFulfills = [];
+    await page.route('https://api.github.com/search/issues**', async route => {
+      callCount++;
+      const url = route.request().url();
+      if (url.includes('first-owner')) {
+        const p = (async () => {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          await route.fulfill({
+            status: 200,
+            headers: createRateLimitHeaders(),
+            body: JSON.stringify(createSearchResponse(prsFirst)),
+          });
+        })();
+        firstOwnerFulfills.push(p);
+        await p;
+      } else {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify(createSearchResponse(prsSecond)),
+        });
+      }
+    });
+
+    await page.fill('#repoInput', 'first-owner/repo');
+    await page.click('#searchButton');
+    await page.fill('#repoInput', 'second-owner/repo');
+    await page.click('#searchButton');
+
+    await waitForResults(page);
+    const prList = page.locator('#prList');
+    await expect(prList).toBeVisible();
+    // Ensure only the fresh results from the second search are displayed
+    await expect(prList.locator('text=Fresh PR')).toBeVisible();
+    await expect(prList.locator('text=Stale PR')).toHaveCount(0);
+    // Ensure both searches were actually issued
+    expect(callCount).toBeGreaterThanOrEqual(2);
+
+    // Wait for all delayed first-owner requests to fully resolve, then re-assert
+    // that stale results did not overwrite the fresh ones
+    await Promise.all(firstOwnerFulfills);
+    await expect(prList.locator('text=Fresh PR')).toBeVisible();
+    await expect(prList.locator('text=Stale PR')).toHaveCount(0);
+  });
+
+  test('should update all stats when searching different repos consecutively', async ({ page }) => {
+    const prsRepo1 = createPRs([
+      { title: 'Repo1 PR', state: 'open', created_at: getDaysAgoISO(5) },
+    ]);
+    const prsRepo2 = createPRs([
+      { title: 'Repo2 PR 1', state: 'closed', merged_at: getDaysAgoISO(3), created_at: getDaysAgoISO(5) },
+      { title: 'Repo2 PR 2', state: 'closed', merged_at: getDaysAgoISO(2), created_at: getDaysAgoISO(4) },
+      { title: 'Repo2 PR 3', state: 'open', created_at: getDaysAgoISO(1) },
+    ]);
+
+    await page.route('https://api.github.com/search/issues**', async route => {
+      const url = decodeURIComponent(route.request().url());
+      if (url.includes('repo1')) {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify(createSearchResponse(prsRepo1)),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          headers: createRateLimitHeaders(),
+          body: JSON.stringify(createSearchResponse(prsRepo2)),
+        });
+      }
+    });
+
+    await submitSearch(page, { repo: 'owner/repo1' });
+    await waitForResults(page);
+    const totalAfterFirst = await page.locator('#totalPRs').textContent();
+    expect(totalAfterFirst).toContain('1');
+
+    await submitSearch(page, { repo: 'owner/repo2' });
+    await waitForResults(page);
+    const totalAfterSecond = await page.locator('#totalPRs').textContent();
+    expect(totalAfterSecond).toContain('3');
+
+    await expect(page.locator('#mergeRateValue')).toHaveText('67%');
+  });
+
+  test('should allow same from and to date (not show error)', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Same Day PR', state: 'open', created_at: '2024-06-15T10:00:00Z' },
+    ]);
+
+    await mockSearchAPI(page, { prs });
+    await submitSearch(page, {
+      repo: 'test/repo',
+      fromDate: '2024-06-15',
+      toDate: '2024-06-15',
+    });
+
+    await waitForResults(page);
+    await expect(page.locator('#error')).toBeHidden();
+  });
+
+  test('should accept repo names with consecutive dots', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [] });
+    await submitSearch(page, { repo: 'owner/my..repo' });
+
+    await waitForResults(page);
+    await expect(page.locator('#error')).toBeHidden();
+  });
+
+  test('should accept repo names starting with dot', async ({ page }) => {
+    await mockSearchAPI(page, { prs: [] });
+    await submitSearch(page, { repo: 'owner/.hidden' });
+
+    await waitForResults(page);
+    await expect(page.locator('#error')).toBeHidden();
   });
 });
