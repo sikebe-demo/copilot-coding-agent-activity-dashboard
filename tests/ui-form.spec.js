@@ -487,16 +487,21 @@ test.describe('Loading State', () => {
     ]);
 
     let callCount = 0;
+    const firstOwnerFulfills = [];
     await page.route('https://api.github.com/search/issues**', async route => {
       callCount++;
       const url = route.request().url();
       if (url.includes('first-owner')) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await route.fulfill({
-          status: 200,
-          headers: createRateLimitHeaders(),
-          body: JSON.stringify(createSearchResponse(prsFirst)),
-        });
+        const p = (async () => {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          await route.fulfill({
+            status: 200,
+            headers: createRateLimitHeaders(),
+            body: JSON.stringify(createSearchResponse(prsFirst)),
+          });
+        })();
+        firstOwnerFulfills.push(p);
+        await p;
       } else {
         await route.fulfill({
           status: 200,
@@ -520,9 +525,9 @@ test.describe('Loading State', () => {
     // Ensure both searches were actually issued
     expect(callCount).toBeGreaterThanOrEqual(2);
 
-    // Wait for the delayed first search response to resolve, then re-assert
+    // Wait for all delayed first-owner requests to fully resolve, then re-assert
     // that stale results did not overwrite the fresh ones
-    await page.waitForTimeout(2500);
+    await Promise.all(firstOwnerFulfills);
     await expect(prList.locator('text=Fresh PR')).toBeVisible();
     await expect(prList.locator('text=Stale PR')).toHaveCount(0);
   });
