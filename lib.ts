@@ -14,12 +14,12 @@ export interface GitHubUser {
 export interface PullRequest {
     id: number;
     number: number;
-    title: string;
+    title: string | null;
     state: 'open' | 'closed';
     merged_at: string | null;
     created_at: string;
     user: GitHubUser | null;
-    html_url: string;
+    html_url: string | null;
 }
 
 export interface PRsByDate {
@@ -72,11 +72,11 @@ export interface SearchResponse {
 export interface SearchIssueItem {
     id: number;
     number: number;
-    title: string;
+    title: string | null;
     state: 'open' | 'closed';
     created_at: string;
     user: GitHubUser | null;
-    html_url: string;
+    html_url: string | null;
     pull_request?: {
         merged_at: string | null;
     };
@@ -454,10 +454,7 @@ export function getApiErrorMessage(
     }
 
     if (status === 403) {
-        const isRateLimit =
-            rateLimitInfo && rateLimitInfo.remaining !== undefined
-                ? String(rateLimitInfo.remaining) === '0'
-                : false;
+        const isRateLimit = rateLimitInfo?.remaining === 0;
 
         if (isRateLimit) {
             const resetTime = rateLimitInfo?.reset

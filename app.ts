@@ -3,16 +3,24 @@ import Chart from 'chart.js/auto';
 
 // Import pure functions and types from lib
 import {
-    isValidGitHubName,
+    parseRepoInput,
+    validateDateRange,
     getCacheKey,
     getFromCache,
     saveToCache,
     clearOldCache,
     extractRateLimitInfo,
     formatCountdown,
+    getRateLimitStatus,
     getPageNumbersToShow,
     classifyPRs,
     prepareChartData,
+    getApiErrorMessage,
+    convertSearchItemsToPRs,
+    buildSearchQuery,
+    buildSearchUrl,
+    buildApiHeaders,
+    adjustClosedCount,
     createRatioHtml,
     sortPRsByDate,
     generatePRItemHtml,
@@ -137,20 +145,16 @@ async function handleFormSubmit(e: Event): Promise<void> {
     const toDate = toDateEl?.value ?? '';
     const token = tokenInputEl?.value.trim() ?? '';
 
-    const [owner, repo, ...rest] = repoInput.split('/');
-    if (!owner || !repo || rest.length > 0) {
-        showError('Please enter repository in "owner/repo" format');
+    const parseResult = parseRepoInput(repoInput);
+    if (typeof parseResult === 'string') {
+        showError(parseResult);
         return;
     }
+    const { owner, repo } = parseResult;
 
-    // Validate owner and repo names to prevent path traversal attacks
-    if (!isValidGitHubName(owner) || !isValidGitHubName(repo)) {
-        showError('Invalid repository name. Names can only contain letters, numbers, hyphens, underscores, and periods.');
-        return;
-    }
-
-    if (new Date(fromDate) > new Date(toDate)) {
-        showError('Start date must be before end date');
+    const dateError = validateDateRange(fromDate, toDate);
+    if (dateError) {
+        showError(dateError);
         return;
     }
 
@@ -235,18 +239,10 @@ async function fetchCopilotPRsWithSearchAPI(
     toDate: string,
     token: string
 ): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null; allPRCounts: AllPRCounts }> {
-    const headers: HeadersInit = {
-        'Accept': 'application/vnd.github.v3+json'
-    };
-
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
+    const headers = buildApiHeaders(token);
 
     // Build search query for Copilot PRs within date range
-    // Search API requires 'author:app/copilot-swe-agent' to search for Copilot Coding Agent PRs
-    // Note: Do NOT encode owner/repo here - the query string will be encoded when added to URL
-    const query = `repo:${owner}/${repo} is:pr author:app/copilot-swe-agent created:${fromDate}..${toDate}`;
+    const query = buildSearchQuery(owner, repo, fromDate, toDate);
 
     const allPRs: PullRequest[] = [];
     let page = 1;
@@ -259,7 +255,7 @@ async function fetchCopilotPRsWithSearchAPI(
     updateLoadingPhase('Fetching Copilot PRs...', 'Searching for PRs created by Copilot Coding Agent');
 
     while (true) {
-        const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&sort=created&order=desc`;
+        const url = buildSearchUrl(query, perPage, page);
 
         const response = await fetch(url, { headers });
 
@@ -267,52 +263,15 @@ async function fetchCopilotPRsWithSearchAPI(
         rateLimitInfo = extractRateLimitInfo(response.headers);
 
         if (!response.ok) {
-            if (response.status === 404) {
-                throw new Error('Repository not found');
-            } else if (response.status === 401) {
-                throw new Error('Authentication failed. Please check that your GitHub token is valid.');
-            } else if (response.status === 403) {
-                const isRateLimit =
-                    rateLimitInfo && rateLimitInfo.remaining !== undefined
-                        ? String(rateLimitInfo.remaining) === '0'
-                        : false;
-
-                if (isRateLimit) {
-                    const resetTime = rateLimitInfo?.reset
-                        ? new Date(rateLimitInfo.reset * 1000).toLocaleString('ja-JP', { timeZoneName: 'short' })
-                        : 'unknown';
-                    throw new Error(
-                        `API rate limit reached. Reset at: ${resetTime}. Try again later or use a different token.`
-                    );
-                } else {
-                    throw new Error(
-                        'Access forbidden (HTTP 403). This may be due to insufficient permissions, SSO not being authorized, or temporary abuse protection on the GitHub API.'
-                    );
-                }
-            } else if (response.status === 422) {
-                let detail = '';
+            let responseBody: { message?: string; errors?: Array<{ message?: string }> } | undefined;
+            if (response.status === 422) {
                 try {
-                    const body = await response.json();
-                    if (body.errors?.[0]?.message) {
-                        detail = body.errors[0].message;
-                    }
+                    responseBody = await response.json();
                 } catch {
                     // ignore parse errors
                 }
-                if (detail.toLowerCase().includes('cannot be searched')) {
-                    throw new Error(
-                        'Search query validation failed. The repository or author filter could not be resolved. ' +
-                        'This may happen if the repository does not exist, you do not have permission to access it, ' +
-                        'or the Copilot Coding Agent app is not installed on the repository. ' +
-                        'Please verify the repository name and ensure your token has access.'
-                    );
-                }
-                throw new Error(
-                    `Search query validation failed. ${detail || 'Please check the repository name.'}`
-                );
-            } else {
-                throw new Error(`GitHub API Error: ${response.status}`);
             }
+            throw new Error(getApiErrorMessage(response.status, rateLimitInfo, responseBody));
         }
 
         const searchResponse: SearchResponse = await response.json();
@@ -328,16 +287,7 @@ async function fetchCopilotPRsWithSearchAPI(
         if (items.length === 0) break;
 
         // Convert search results to PullRequest format
-        const prs: PullRequest[] = items.map(item => ({
-            id: item.id,
-            number: item.number,
-            title: item.title,
-            state: item.state,
-            merged_at: item.pull_request?.merged_at ?? null,
-            created_at: item.created_at,
-            user: item.user,
-            html_url: item.html_url
-        }));
+        const prs = convertSearchItemsToPRs(items);
 
         allPRs.push(...prs);
 
@@ -406,7 +356,7 @@ async function fetchAllPRCounts(
 
     const counts: AllPRCounts = { ...defaultCounts };
     // Track which queries succeeded to ensure correct closed calculation
-    const succeeded = new Set<(typeof queries)[number]['key']>();
+    const succeeded = new Set<string>();
 
     try {
         // Execute all API calls in parallel using Promise.allSettled
@@ -443,21 +393,10 @@ async function fetchAllPRCounts(
             succeeded.add(key);
         }
 
-        // Adjust closed count to represent only "closed but not merged" PRs:
-        // closed_not_merged = closed (from API, includes merged + unmerged) - merged
-        // Only adjust if BOTH closed and merged queries succeeded; otherwise the
-        // subtraction would produce an incorrect value.
-        // NOTE: After this line, counts.closed represents "closed not merged" PRs.
-        if (succeeded.has('closed') && succeeded.has('merged')) {
-            counts.closed = Math.max(0, counts.closed - counts.merged);
-        } else if (succeeded.has('closed') && !succeeded.has('merged')) {
-            // Closed query succeeded but merged failed — we cannot reliably
-            // compute "closed not merged", so reset to 0 to avoid showing a
-            // misleading number that includes merged PRs.
-            counts.closed = 0;
-        }
+        // Adjust closed count to represent only "closed but not merged" PRs
+        const adjustedCounts = adjustClosedCount(counts, succeeded);
 
-        return { counts, rateLimitInfo };
+        return { counts: adjustedCounts, rateLimitInfo };
     } catch (error) {
         console.warn('Error fetching all PR counts:', error);
         return { counts: defaultCounts, rateLimitInfo };
@@ -903,28 +842,24 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
     const resetCountdown = formatCountdown(info.reset);
     const usagePercent = Math.round((info.used / info.limit) * 100);
 
-    // Determine if authenticated based on limit (10 = unauthenticated, 30 = authenticated for search)
-    const isAuthenticated = info.limit > 10;
+    // Determine rate limit status and authentication state
+    const { statusText, isAuthenticated } = getRateLimitStatus(info.remaining, info.limit);
     const authStatusBadge = isAuthenticated
         ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Authenticated</span>'
         : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">Unauthenticated</span>';
 
-    // Determine status color based on remaining requests
+    // Map status text to CSS classes
     let statusClass: string;
-    let statusText: string;
     let statusBgClass: string;
-    if (info.remaining > info.limit * 0.5) {
+    if (statusText === 'Good') {
         statusClass = 'text-green-600 dark:text-green-400';
         statusBgClass = 'bg-green-100 dark:bg-green-900/30';
-        statusText = 'Good';
-    } else if (info.remaining > info.limit * 0.2) {
+    } else if (statusText === 'Warning') {
         statusClass = 'text-yellow-600 dark:text-yellow-400';
         statusBgClass = 'bg-yellow-100 dark:bg-yellow-900/30';
-        statusText = 'Warning';
     } else {
         statusClass = 'text-red-600 dark:text-red-400';
         statusBgClass = 'bg-red-100 dark:bg-red-900/30';
-        statusText = 'Low';
     }
 
     const cacheIndicator = fromCache
