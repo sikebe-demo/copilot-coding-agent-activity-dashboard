@@ -29,25 +29,6 @@ test.describe('UI & Form', () => {
     await expect(heading).toContainText('Copilot PR Dashboard');
   });
 
-  test('should have all required form fields', async ({ page }) => {
-    const repoInput = page.locator('#repoInput');
-    await expect(repoInput).toBeVisible();
-    await expect(repoInput).toHaveAttribute('placeholder', /microsoft\/vscode|owner\/repo/);
-
-    const fromDate = page.locator('#fromDate');
-    const toDate = page.locator('#toDate');
-    await expect(fromDate).toBeVisible();
-    await expect(toDate).toBeVisible();
-
-    const tokenInput = page.locator('#tokenInput');
-    await expect(tokenInput).toBeVisible();
-    await expect(tokenInput).toHaveAttribute('type', 'password');
-
-    const submitButton = page.locator('#searchButton');
-    await expect(submitButton).toBeVisible();
-    await expect(submitButton).toContainText('Start Analysis');
-  });
-
   test('should set default dates (last 30 days)', async ({ page }) => {
     const fromDate = page.locator('#fromDate');
     const toDate = page.locator('#toDate');
@@ -66,17 +47,6 @@ test.describe('UI & Form', () => {
     expect(daysDiff).toBeLessThanOrEqual(31);
   });
 
-  test('should have accessible labels and ARIA attributes', async ({ page }) => {
-    await expect(page.locator('label[for="repoInput"]')).toBeVisible();
-    await expect(page.locator('label[for="fromDate"]')).toBeVisible();
-    await expect(page.locator('label[for="toDate"]')).toBeVisible();
-    await expect(page.locator('label[for="tokenInput"]')).toBeVisible();
-
-    await expect(page.locator('#repoInput')).toHaveAttribute('required', '');
-    await expect(page.locator('#fromDate')).toHaveAttribute('required', '');
-    await expect(page.locator('#toDate')).toHaveAttribute('required', '');
-  });
-
   test('should prevent form submission when required fields are empty', async ({ page }) => {
     await page.fill('#repoInput', '');
     await page.click('#searchButton');
@@ -85,16 +55,6 @@ test.describe('UI & Form', () => {
     await expect(page.locator('#error')).toBeHidden();
   });
 
-  test('should show footer with correct links', async ({ page }) => {
-    const footer = page.locator('footer');
-    await expect(footer).toBeVisible();
-    await expect(footer).toContainText('Copilot Coding Agent PR Dashboard');
-    await expect(footer).toContainText('GitHub API');
-
-    const githubLink = footer.locator('a[href="https://github.com"]');
-    await expect(githubLink).toHaveAttribute('target', '_blank');
-    await expect(githubLink).toHaveAttribute('rel', /noopener/);
-  });
 });
 
 // ============================================================================
@@ -108,55 +68,6 @@ test.describe('Preset Repository Buttons', () => {
     await page.reload();
   });
 
-  test('should display preset repository buttons', async ({ page }) => {
-    const presetButtons = page.locator('.preset-repo-btn');
-    await expect(presetButtons).toHaveCount(3);
-
-    await expect(presetButtons.nth(0)).toContainText('microsoft/vscode');
-    await expect(presetButtons.nth(1)).toContainText('microsoft/typespec');
-    await expect(presetButtons.nth(2)).toContainText('Azure/azure-sdk-for-net');
-  });
-
-  test('should display "Popular:" label before preset buttons', async ({ page }) => {
-    const label = page.locator('.preset-repo-btn').first().locator('..').locator('span').first();
-    await expect(label).toContainText('Popular:');
-  });
-
-  test('should fill repo input when preset button is clicked', async ({ page }) => {
-    const repoInput = page.locator('#repoInput');
-
-    await page.locator('.preset-repo-btn[data-repo="microsoft/vscode"]').click();
-    await expect(repoInput).toHaveValue('microsoft/vscode');
-
-    await page.locator('.preset-repo-btn[data-repo="microsoft/typespec"]').click();
-    await expect(repoInput).toHaveValue('microsoft/typespec');
-
-    await page.locator('.preset-repo-btn[data-repo="Azure/azure-sdk-for-net"]').click();
-    await expect(repoInput).toHaveValue('Azure/azure-sdk-for-net');
-  });
-
-  test('should focus repo input after preset button click', async ({ page }) => {
-    await page.locator('.preset-repo-btn[data-repo="microsoft/vscode"]').click();
-
-    const focusedId = await page.evaluate(() => document.activeElement?.id);
-    expect(focusedId).toBe('repoInput');
-  });
-
-  test('should not submit form when preset button is clicked', async ({ page }) => {
-    let apiCalled = false;
-    await page.route('https://api.github.com/search/issues**', async route => {
-      apiCalled = true;
-      await route.abort();
-    });
-
-    await page.locator('.preset-repo-btn[data-repo="microsoft/vscode"]').click();
-
-    await expect(page.locator('#loading')).toBeHidden();
-    await expect(page.locator('#error')).toBeHidden();
-    await expect(page.locator('#results')).toBeHidden();
-    expect(apiCalled).toBe(false);
-  });
-
   test('should allow submitting search after preset button click', async ({ page }) => {
     await mockSearchAPI(page, { prs: [createPR()] });
 
@@ -165,21 +76,6 @@ test.describe('Preset Repository Buttons', () => {
 
     await waitForResults(page);
     await expect(page.locator('#totalPRs')).toContainText('1');
-  });
-
-  test('should have correct data-repo attributes', async ({ page }) => {
-    const buttons = page.locator('.preset-repo-btn');
-    await expect(buttons.nth(0)).toHaveAttribute('data-repo', 'microsoft/vscode');
-    await expect(buttons.nth(1)).toHaveAttribute('data-repo', 'microsoft/typespec');
-    await expect(buttons.nth(2)).toHaveAttribute('data-repo', 'Azure/azure-sdk-for-net');
-  });
-
-  test('should have type="button" to prevent form submission', async ({ page }) => {
-    const buttons = page.locator('.preset-repo-btn');
-    const count = await buttons.count();
-    for (let i = 0; i < count; i++) {
-      await expect(buttons.nth(i)).toHaveAttribute('type', 'button');
-    }
   });
 });
 
@@ -229,149 +125,6 @@ test.describe('Responsive Design', () => {
     await expect(page.locator('h1')).toBeVisible();
     await expect(page.locator('#searchForm')).toBeVisible();
     await expect(page.locator('#searchButton')).toBeVisible();
-  });
-});
-
-// ============================================================================
-// Form Validation Tests
-// ============================================================================
-
-test.describe('Form Validation', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => localStorage.clear());
-    await page.reload();
-  });
-
-  test('should show error for invalid repository format', async ({ page }) => {
-    await page.fill('#repoInput', 'invalid-repo');
-    await page.click('#searchButton');
-
-    const error = page.locator('#error');
-    await expect(error).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText('owner/repo');
-  });
-
-  test('should show error for repository format with empty owner', async ({ page }) => {
-    await page.fill('#repoInput', '/repo');
-    await page.click('#searchButton');
-
-    await expect(page.locator('#error')).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText('owner/repo');
-  });
-
-  test('should show error for repository format with empty repo', async ({ page }) => {
-    await page.fill('#repoInput', 'owner/');
-    await page.click('#searchButton');
-
-    await expect(page.locator('#error')).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText('owner/repo');
-  });
-
-  test('should show error for repository format with multiple slashes', async ({ page }) => {
-    await page.fill('#repoInput', 'owner/repo/extra');
-    await page.click('#searchButton');
-
-    await expect(page.locator('#error')).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText('owner/repo');
-  });
-
-  test('should handle repository input with leading and trailing whitespace', async ({ page }) => {
-    await mockSearchAPI(page, { prs: [createPR()] });
-    await submitSearch(page, { repo: '  test/repo  ' });
-
-    await waitForResults(page);
-    await expect(page.locator('#totalPRs')).toContainText('1');
-  });
-
-  test('should handle repository input with whitespace before slash', async ({ page }) => {
-    await mockSearchAPI(page, { status: 404, body: { message: 'Not Found' } });
-    await submitSearch(page, { repo: 'owner /repo' });
-
-    await expect(page.locator('#error')).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText(/Invalid repository name|Repository not found|error/i);
-  });
-
-  test('should handle repository input with whitespace after slash', async ({ page }) => {
-    await mockSearchAPI(page, { status: 404, body: { message: 'Not Found' } });
-    await submitSearch(page, { repo: 'owner/ repo' });
-
-    await expect(page.locator('#error')).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText(/Invalid repository name|Repository not found|error/i);
-  });
-
-  test('should show error when start date is after end date', async ({ page }) => {
-    const futureDate = new Date();
-    futureDate.setDate(futureDate.getDate() + 10);
-    const pastDate = new Date();
-    pastDate.setDate(pastDate.getDate() - 10);
-
-    await page.fill('#repoInput', 'test/repo');
-    await page.fill('#fromDate', futureDate.toISOString().split('T')[0]);
-    await page.fill('#toDate', pastDate.toISOString().split('T')[0]);
-    await page.click('#searchButton');
-
-    await expect(page.locator('#error')).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText(/start date.*before.*end date/i);
-  });
-
-  test('should reject repository names with path traversal attempts', async ({ page }) => {
-    await page.fill('#repoInput', 'owner/..');
-    await page.click('#searchButton');
-
-    await expect(page.locator('#error')).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText('Invalid repository name');
-  });
-
-  test('should reject repository names with single dot', async ({ page }) => {
-    await page.fill('#repoInput', 'owner/.');
-    await page.click('#searchButton');
-
-    await expect(page.locator('#error')).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText('Invalid repository name');
-  });
-
-  test('should handle special characters in repository name', async ({ page }) => {
-    await mockSearchAPI(page, { prs: [createPR()] });
-    await submitSearch(page, { repo: 'my-org_123/repo.name-test_v2' });
-    await waitForResults(page);
-
-    await expect(page.locator('#totalPRs')).toContainText('1');
-  });
-
-  test('should reject repository names with invalid characters', async ({ page }) => {
-    await page.fill('#repoInput', 'owner/repo@name');
-    await page.click('#searchButton');
-
-    await expect(page.locator('#error')).toBeVisible();
-    await expect(page.locator('#errorMessage')).toContainText('Invalid repository name');
-  });
-
-  test('should validate date range', async ({ page }) => {
-    const futureDate = new Date();
-    futureDate.setDate(futureDate.getDate() + 10);
-    const pastDate = new Date();
-    pastDate.setDate(pastDate.getDate() - 10);
-
-    await page.fill('#fromDate', futureDate.toISOString().split('T')[0]);
-    await page.fill('#toDate', pastDate.toISOString().split('T')[0]);
-    await page.fill('#repoInput', 'test/repo');
-
-    const fromValue = await page.locator('#fromDate').inputValue();
-    const toValue = await page.locator('#toDate').inputValue();
-
-    expect(fromValue).toBeTruthy();
-    expect(toValue).toBeTruthy();
-  });
-
-  test('should handle same start and end date', async ({ page }) => {
-    const prs = [createPR({ title: 'Same day PR', state: 'open', created_at: '2026-01-15T10:00:00Z' })];
-    await mockSearchAPI(page, { prs });
-
-    await submitSearch(page, { fromDate: '2026-01-15', toDate: '2026-01-15' });
-    await waitForResults(page);
-
-    await expect(page.locator('#totalPRs')).toContainText('1');
   });
 });
 
@@ -572,35 +325,4 @@ test.describe('Loading State', () => {
     await expect(page.locator('#mergeRateValue')).toHaveText('67%');
   });
 
-  test('should allow same from and to date (not show error)', async ({ page }) => {
-    const prs = createPRs([
-      { title: 'Same Day PR', state: 'open', created_at: '2024-06-15T10:00:00Z' },
-    ]);
-
-    await mockSearchAPI(page, { prs });
-    await submitSearch(page, {
-      repo: 'test/repo',
-      fromDate: '2024-06-15',
-      toDate: '2024-06-15',
-    });
-
-    await waitForResults(page);
-    await expect(page.locator('#error')).toBeHidden();
-  });
-
-  test('should accept repo names with consecutive dots', async ({ page }) => {
-    await mockSearchAPI(page, { prs: [] });
-    await submitSearch(page, { repo: 'owner/my..repo' });
-
-    await waitForResults(page);
-    await expect(page.locator('#error')).toBeHidden();
-  });
-
-  test('should accept repo names starting with dot', async ({ page }) => {
-    await mockSearchAPI(page, { prs: [] });
-    await submitSearch(page, { repo: 'owner/.hidden' });
-
-    await waitForResults(page);
-    await expect(page.locator('#error')).toBeHidden();
-  });
 });

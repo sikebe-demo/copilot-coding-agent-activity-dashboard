@@ -1,101 +1,52 @@
 // Import Chart.js from npm
 import Chart from 'chart.js/auto';
 
+// Import pure functions and types from lib
+import {
+    parseRepoInput,
+    validateDateRange,
+    getCacheKey,
+    getFromCache,
+    saveToCache,
+    clearOldCache,
+    extractRateLimitInfo,
+    formatCountdown,
+    getRateLimitStatus,
+    getPageNumbersToShow,
+    classifyPRs,
+    prepareChartData,
+    getApiErrorMessage,
+    convertSearchItemsToPRs,
+    buildSearchQuery,
+    buildSearchUrl,
+    buildApiHeaders,
+    adjustClosedCount,
+    createRatioHtml,
+    sortPRsByDate,
+    generatePRItemHtml,
+    generateEmptyListHtml,
+    ITEMS_PER_PAGE,
+} from './lib';
+
+import type {
+    PullRequest,
+    RateLimitInfo,
+    AllPRCounts,
+    SearchResponse,
+} from './lib';
+
 // Timer for rate limit countdown
 let rateLimitCountdownInterval: number | null = null;
 
 // Request sequencing: ignore stale responses from earlier searches
 let currentRequestId = 0;
 
-// Type definitions
-interface GitHubUser {
-    login?: string;
-}
-
-interface PullRequest {
-    id: number;
-    number: number;
-    title: string;
-    state: 'open' | 'closed';
-    merged_at: string | null;
-    created_at: string;
-    user: GitHubUser | null;
-    html_url: string;
-}
-
-interface PRsByDate {
-    [date: string]: {
-        merged: number;
-        closed: number;
-        open: number;
-    };
-}
-
-interface StatusConfig {
-    class: string;
-    icon: string;
-    text: string;
-}
-
-interface StatusConfigMap {
-    merged: StatusConfig;
-    closed: StatusConfig;
-    open: StatusConfig;
-}
-
-interface RateLimitInfo {
-    limit: number;
-    remaining: number;
-    reset: number;
-    used: number;
-}
-
-interface AllPRCounts {
-    total: number;
-    merged: number;
-    closed: number;
-    open: number;
-}
-
-interface CacheEntry {
-    data: PullRequest[];
-    timestamp: number;
-    rateLimitInfo: RateLimitInfo | null;
-    allPRCounts: AllPRCounts;
-}
-
-interface SearchResponse {
-    total_count: number;
-    incomplete_results: boolean;
-    items: SearchIssueItem[];
-}
-
-interface SearchIssueItem {
-    id: number;
-    number: number;
-    title: string;
-    state: 'open' | 'closed';
-    created_at: string;
-    user: GitHubUser | null;
-    html_url: string;
-    pull_request?: {
-        merged_at: string | null;
-    };
-}
-
 // Global chart instance
 let chartInstance: Chart | null = null;
 
 // Pagination state
-const ITEMS_PER_PAGE = 10;
 let currentPage = 1;
 let currentPRs: PullRequest[] = [];
-
-// Cache settings
-const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
-// Bump when cache schema changes to invalidate legacy entries
-const CACHE_VERSION = 'v2';
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 // Default loading text (shared between index.html initial state and resetLoadingProgress)
 const DEFAULT_LOADING_TITLE = 'Fetching data...';
@@ -194,20 +145,16 @@ async function handleFormSubmit(e: Event): Promise<void> {
     const toDate = toDateEl?.value ?? '';
     const token = tokenInputEl?.value.trim() ?? '';
 
-    const [owner, repo, ...rest] = repoInput.split('/');
-    if (!owner || !repo || rest.length > 0) {
-        showError('Please enter repository in "owner/repo" format');
+    const parseResult = parseRepoInput(repoInput);
+    if (typeof parseResult === 'string') {
+        showError(parseResult);
         return;
     }
+    const { owner, repo } = parseResult;
 
-    // Validate owner and repo names to prevent path traversal attacks
-    if (!isValidGitHubName(owner) || !isValidGitHubName(repo)) {
-        showError('Invalid repository name. Names can only contain letters, numbers, hyphens, underscores, and periods.');
-        return;
-    }
-
-    if (new Date(fromDate) > new Date(toDate)) {
-        showError('Start date must be before end date');
+    const dateError = validateDateRange(fromDate, toDate);
+    if (dateError) {
+        showError(dateError);
         return;
     }
 
@@ -237,133 +184,7 @@ async function handleFormSubmit(e: Event): Promise<void> {
     }
 }
 
-// Validate GitHub owner/repo segments using a conservative allowlist to prevent path traversal or injection
-// NOTE: This is a *security* filter for safe path segments, not a complete implementation of GitHub's naming rules.
-// It rejects "." and ".." and only allows letters, numbers, hyphens, underscores, and periods.
-function isValidGitHubName(name: string): boolean {
-    // Reject empty names, "." and ".." for path traversal prevention
-    if (!name || name === '.' || name === '..') {
-        return false;
-    }
-    // Only allow alphanumeric characters, hyphens, underscores, and periods
-    const validPattern = /^[A-Za-z0-9_.-]+$/;
-    return validPattern.test(name);
-}
-
-// Cache Functions
-function getCacheKey(owner: string, repo: string, fromDate: string, toDate: string, hasToken: boolean): string {
-    // Include authentication status in cache key to prevent serving authenticated data to unauthenticated users
-    const authSuffix = hasToken ? '_auth' : '_noauth';
-    // Use JSON.stringify to avoid ambiguous underscore-separated encoding that can cause cache key collisions
-    const paramsKey = JSON.stringify({ owner, repo, fromDate, toDate });
-    return `${CACHE_KEY_PREFIX}${CACHE_VERSION}_${paramsKey}${authSuffix}`;
-}
-
-function getFromCache(cacheKey: string): CacheEntry | null {
-    try {
-        const cached = localStorage.getItem(cacheKey);
-        if (!cached) return null;
-
-        const entry: CacheEntry = JSON.parse(cached);
-        const now = Date.now();
-
-        // Check if cache is still valid
-        if (now - entry.timestamp > CACHE_DURATION_MS) {
-            localStorage.removeItem(cacheKey);
-            return null;
-        }
-
-        return entry;
-    } catch {
-        return null;
-    }
-}
-
-function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo: RateLimitInfo | null, allPRCounts: AllPRCounts): void {
-    try {
-        const entry: CacheEntry = {
-            data,
-            timestamp: Date.now(),
-            rateLimitInfo,
-            allPRCounts
-        };
-        localStorage.setItem(cacheKey, JSON.stringify(entry));
-    } catch {
-        // Cache save failed (e.g., localStorage full), ignore
-    }
-}
-
-function clearOldCache(): void {
-    try {
-        const keysToRemove: string[] = [];
-        const currentVersionPrefix = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_`;
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key?.startsWith(CACHE_KEY_PREFIX)) {
-                // Remove entries that don't match current version
-                if (!key.startsWith(currentVersionPrefix)) {
-                    keysToRemove.push(key);
-                    continue;
-                }
-
-                const cached = localStorage.getItem(key);
-                if (cached) {
-                    try {
-                        const entry: CacheEntry = JSON.parse(cached);
-                        if (Date.now() - entry.timestamp > CACHE_DURATION_MS) {
-                            keysToRemove.push(key);
-                        }
-                    } catch {
-                        keysToRemove.push(key);
-                    }
-                }
-            }
-        }
-        keysToRemove.forEach(key => localStorage.removeItem(key));
-    } catch {
-        // Ignore cache cleanup errors
-    }
-}
-
 // GitHub API Functions
-function extractRateLimitInfo(response: Response): RateLimitInfo | null {
-    const limit = response.headers.get('X-RateLimit-Limit');
-    const remaining = response.headers.get('X-RateLimit-Remaining');
-    const reset = response.headers.get('X-RateLimit-Reset');
-    const usedHeader = response.headers.get('X-RateLimit-Used');
-
-    if (!limit || !remaining || !reset) {
-        return null;
-    }
-
-    const limitNum = parseInt(limit, 10);
-    const remainingNum = parseInt(remaining, 10);
-    const resetNum = parseInt(reset, 10);
-
-    if (Number.isNaN(limitNum) || Number.isNaN(remainingNum) || Number.isNaN(resetNum)) {
-        return null;
-    }
-
-    let usedNum: number;
-    if (usedHeader !== null) {
-        usedNum = parseInt(usedHeader, 10);
-        if (Number.isNaN(usedNum)) {
-            return null;
-        }
-    } else {
-        usedNum = limitNum - remainingNum;
-        if (Number.isNaN(usedNum)) {
-            return null;
-        }
-    }
-
-    return {
-        limit: limitNum,
-        remaining: remainingNum,
-        reset: resetNum,
-        used: usedNum
-    };
-}
 
 interface FetchResult {
     prs: PullRequest[];
@@ -418,18 +239,10 @@ async function fetchCopilotPRsWithSearchAPI(
     toDate: string,
     token: string
 ): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null; allPRCounts: AllPRCounts }> {
-    const headers: HeadersInit = {
-        'Accept': 'application/vnd.github.v3+json'
-    };
-
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
+    const headers = buildApiHeaders(token);
 
     // Build search query for Copilot PRs within date range
-    // Search API requires 'author:app/copilot-swe-agent' to search for Copilot Coding Agent PRs
-    // Note: Do NOT encode owner/repo here - the query string will be encoded when added to URL
-    const query = `repo:${owner}/${repo} is:pr author:app/copilot-swe-agent created:${fromDate}..${toDate}`;
+    const query = buildSearchQuery(owner, repo, fromDate, toDate);
 
     const allPRs: PullRequest[] = [];
     let page = 1;
@@ -442,60 +255,23 @@ async function fetchCopilotPRsWithSearchAPI(
     updateLoadingPhase('Fetching Copilot PRs...', 'Searching for PRs created by Copilot Coding Agent');
 
     while (true) {
-        const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&sort=created&order=desc`;
+        const url = buildSearchUrl(query, perPage, page);
 
         const response = await fetch(url, { headers });
 
         // Extract rate limit info from response
-        rateLimitInfo = extractRateLimitInfo(response);
+        rateLimitInfo = extractRateLimitInfo(response.headers);
 
         if (!response.ok) {
-            if (response.status === 404) {
-                throw new Error('Repository not found');
-            } else if (response.status === 401) {
-                throw new Error('Authentication failed. Please check that your GitHub token is valid.');
-            } else if (response.status === 403) {
-                const isRateLimit =
-                    rateLimitInfo && rateLimitInfo.remaining !== undefined
-                        ? String(rateLimitInfo.remaining) === '0'
-                        : false;
-
-                if (isRateLimit) {
-                    const resetTime = rateLimitInfo?.reset
-                        ? new Date(rateLimitInfo.reset * 1000).toLocaleString('ja-JP', { timeZoneName: 'short' })
-                        : 'unknown';
-                    throw new Error(
-                        `API rate limit reached. Reset at: ${resetTime}. Try again later or use a different token.`
-                    );
-                } else {
-                    throw new Error(
-                        'Access forbidden (HTTP 403). This may be due to insufficient permissions, SSO not being authorized, or temporary abuse protection on the GitHub API.'
-                    );
-                }
-            } else if (response.status === 422) {
-                let detail = '';
+            let responseBody: { message?: string; errors?: Array<{ message?: string }> } | undefined;
+            if (response.status === 422) {
                 try {
-                    const body = await response.json();
-                    if (body.errors?.[0]?.message) {
-                        detail = body.errors[0].message;
-                    }
+                    responseBody = await response.json();
                 } catch {
                     // ignore parse errors
                 }
-                if (detail.toLowerCase().includes('cannot be searched')) {
-                    throw new Error(
-                        'Search query validation failed. The repository or author filter could not be resolved. ' +
-                        'This may happen if the repository does not exist, you do not have permission to access it, ' +
-                        'or the Copilot Coding Agent app is not installed on the repository. ' +
-                        'Please verify the repository name and ensure your token has access.'
-                    );
-                }
-                throw new Error(
-                    `Search query validation failed. ${detail || 'Please check the repository name.'}`
-                );
-            } else {
-                throw new Error(`GitHub API Error: ${response.status}`);
             }
+            throw new Error(getApiErrorMessage(response.status, rateLimitInfo, responseBody));
         }
 
         const searchResponse: SearchResponse = await response.json();
@@ -511,16 +287,7 @@ async function fetchCopilotPRsWithSearchAPI(
         if (items.length === 0) break;
 
         // Convert search results to PullRequest format
-        const prs: PullRequest[] = items.map(item => ({
-            id: item.id,
-            number: item.number,
-            title: item.title,
-            state: item.state,
-            merged_at: item.pull_request?.merged_at ?? null,
-            created_at: item.created_at,
-            user: item.user,
-            html_url: item.html_url
-        }));
+        const prs = convertSearchItemsToPRs(items);
 
         allPRs.push(...prs);
 
@@ -589,7 +356,7 @@ async function fetchAllPRCounts(
 
     const counts: AllPRCounts = { ...defaultCounts };
     // Track which queries succeeded to ensure correct closed calculation
-    const succeeded = new Set<(typeof queries)[number]['key']>();
+    const succeeded = new Set<string>();
 
     try {
         // Execute all API calls in parallel using Promise.allSettled
@@ -614,7 +381,7 @@ async function fetchAllPRCounts(
             const { key, response } = result.value;
 
             // Extract rate limit info from response
-            rateLimitInfo = extractRateLimitInfo(response) ?? rateLimitInfo;
+            rateLimitInfo = extractRateLimitInfo(response.headers) ?? rateLimitInfo;
 
             if (!response.ok) {
                 console.warn(`Failed to fetch ${key} PR count:`, response.status);
@@ -626,21 +393,10 @@ async function fetchAllPRCounts(
             succeeded.add(key);
         }
 
-        // Adjust closed count to represent only "closed but not merged" PRs:
-        // closed_not_merged = closed (from API, includes merged + unmerged) - merged
-        // Only adjust if BOTH closed and merged queries succeeded; otherwise the
-        // subtraction would produce an incorrect value.
-        // NOTE: After this line, counts.closed represents "closed not merged" PRs.
-        if (succeeded.has('closed') && succeeded.has('merged')) {
-            counts.closed = Math.max(0, counts.closed - counts.merged);
-        } else if (succeeded.has('closed') && !succeeded.has('merged')) {
-            // Closed query succeeded but merged failed — we cannot reliably
-            // compute "closed not merged", so reset to 0 to avoid showing a
-            // misleading number that includes merged PRs.
-            counts.closed = 0;
-        }
+        // Adjust closed count to represent only "closed but not merged" PRs
+        const adjustedCounts = adjustClosedCount(counts, succeeded);
 
-        return { counts, rateLimitInfo };
+        return { counts: adjustedCounts, rateLimitInfo };
     } catch (error) {
         console.warn('Error fetching all PR counts:', error);
         return { counts: defaultCounts, rateLimitInfo };
@@ -649,21 +405,7 @@ async function fetchAllPRCounts(
 
 // Display Functions
 function displayResults(prs: PullRequest[], fromDate: string, toDate: string, allPRCounts: AllPRCounts): void {
-    const merged = prs.filter(pr => pr.merged_at !== null);
-    const closed = prs.filter(pr => pr.state === 'closed' && pr.merged_at === null);
-    const open = prs.filter(pr => pr.state === 'open' && pr.merged_at === null);
-
-    const mergeRate = prs.length > 0
-        ? Math.round((merged.length / prs.length) * 100)
-        : 0;
-
-    // Helper function to create ratio HTML with large numerator and small denominator
-    const createRatioHtml = (copilotCount: number, totalCount: number, colorClass: string): string => {
-        if (totalCount > 0) {
-            return `<span class="text-4xl font-bold ${colorClass}">${copilotCount}</span><span class="text-lg text-slate-500 dark:text-slate-400 ml-1">/ ${totalCount}</span>`;
-        }
-        return `<span class="text-4xl font-bold ${colorClass}">${copilotCount}</span><span class="text-lg text-slate-500 dark:text-slate-400 ml-1">/ -</span>`;
-    };
+    const counts = classifyPRs(prs);
 
     // Update summary cards with ratio display
     const totalPRsEl = document.getElementById('totalPRs');
@@ -671,19 +413,19 @@ function displayResults(prs: PullRequest[], fromDate: string, toDate: string, al
     const closedPRsEl = document.getElementById('closedPRs');
     const openPRsEl = document.getElementById('openPRs');
 
-    if (totalPRsEl) totalPRsEl.innerHTML = createRatioHtml(prs.length, allPRCounts.total, 'text-slate-800 dark:text-slate-100');
-    if (mergedPRsEl) mergedPRsEl.innerHTML = createRatioHtml(merged.length, allPRCounts.merged, 'text-green-700 dark:text-green-400');
-    if (closedPRsEl) closedPRsEl.innerHTML = createRatioHtml(closed.length, allPRCounts.closed, 'text-red-600 dark:text-red-400');
-    if (openPRsEl) openPRsEl.innerHTML = createRatioHtml(open.length, allPRCounts.open, 'text-blue-600 dark:text-blue-400');
+    if (totalPRsEl) totalPRsEl.innerHTML = createRatioHtml(counts.total, allPRCounts.total, 'text-slate-800 dark:text-slate-100');
+    if (mergedPRsEl) mergedPRsEl.innerHTML = createRatioHtml(counts.merged, allPRCounts.merged, 'text-green-700 dark:text-green-400');
+    if (closedPRsEl) closedPRsEl.innerHTML = createRatioHtml(counts.closed, allPRCounts.closed, 'text-red-600 dark:text-red-400');
+    if (openPRsEl) openPRsEl.innerHTML = createRatioHtml(counts.open, allPRCounts.open, 'text-blue-600 dark:text-blue-400');
 
     // Update merge rate
     const mergeRateValueEl = document.getElementById('mergeRateValue');
     const mergeRateTextEl = document.getElementById('mergeRateText');
     const mergeRateBarEl = document.getElementById('mergeRateBar') as HTMLElement | null;
 
-    if (mergeRateValueEl) mergeRateValueEl.textContent = `${mergeRate}%`;
-    if (mergeRateTextEl) mergeRateTextEl.textContent = `${mergeRate}%`;
-    if (mergeRateBarEl) mergeRateBarEl.style.width = `${mergeRate}%`;
+    if (mergeRateValueEl) mergeRateValueEl.textContent = `${counts.mergeRate}%`;
+    if (mergeRateTextEl) mergeRateTextEl.textContent = `${counts.mergeRate}%`;
+    if (mergeRateBarEl) mergeRateBarEl.style.width = `${counts.mergeRate}%`;
 
     // Display chart with date range passed from form submission
     displayChart(prs, fromDate, toDate);
@@ -695,45 +437,7 @@ function displayResults(prs: PullRequest[], fromDate: string, toDate: string, al
 }
 
 function displayChart(prs: PullRequest[], fromDate: string, toDate: string): void {
-    // Group PRs by date
-    const prsByDate: PRsByDate = {};
-
-    prs.forEach(pr => {
-        const date = new Date(pr.created_at).toISOString().split('T')[0];
-        if (!prsByDate[date]) {
-            prsByDate[date] = { merged: 0, closed: 0, open: 0 };
-        }
-
-        if (pr.merged_at) {
-            prsByDate[date].merged++;
-        } else if (pr.state === 'closed') {
-            prsByDate[date].closed++;
-        } else {
-            prsByDate[date].open++;
-        }
-    });
-
-    // Generate all dates in the range (including days with no data)
-    const dates: string[] = [];
-    if (fromDate && toDate) {
-        const startDate = new Date(fromDate);
-        const endDate = new Date(toDate);
-
-        // Use a new Date object for each iteration to avoid mutation issues
-        const currentDate = new Date(startDate);
-        while (currentDate <= endDate) {
-            dates.push(currentDate.toISOString().split('T')[0]);
-            currentDate.setDate(currentDate.getDate() + 1);
-        }
-    } else {
-        // Fallback: use dates from PRs if date range is not available
-        dates.push(...Object.keys(prsByDate).sort());
-    }
-
-    // Map data for all dates (0 for dates with no PRs)
-    const mergedData = dates.map(date => prsByDate[date]?.merged ?? 0);
-    const closedData = dates.map(date => prsByDate[date]?.closed ?? 0);
-    const openData = dates.map(date => prsByDate[date]?.open ?? 0);
+    const { dates, mergedData, closedData, openData } = prepareChartData(prs, fromDate, toDate);
 
     const chartContainer = document.getElementById('prChart');
     if (!chartContainer) return;
@@ -885,25 +589,14 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
 
     // Store PRs globally and reset page if needed
     if (resetPage) {
-        currentPRs = [...prs].sort((a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
+        currentPRs = sortPRsByDate(prs);
         currentPage = 1;
     }
 
     prList.innerHTML = '';
 
     if (currentPRs.length === 0) {
-        prList.innerHTML = `
-            <div class="text-center py-16">
-                <svg class="w-16 h-16 mx-auto mb-4 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-                <p class="text-slate-600 dark:text-slate-400">No PRs created by Copilot Coding Agent found</p>
-            </div>
-        `;
+        prList.innerHTML = generateEmptyListHtml();
         displayPagination(0, 0);
         return;
     }
@@ -915,73 +608,9 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
     const paginatedPRs = currentPRs.slice(startIndex, endIndex);
 
     paginatedPRs.forEach((pr) => {
-        const createdDate = new Date(pr.created_at).toLocaleDateString('ja-JP');
-        const status: keyof StatusConfigMap = pr.merged_at ? 'merged' : pr.state;
-        const statusConfig: StatusConfigMap = {
-            merged: {
-                class: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
-                icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
-                text: 'Merged'
-            },
-            closed: {
-                class: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
-                icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
-                text: 'Closed'
-            },
-            open: {
-                class: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
-                icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg>`,
-                text: 'Open'
-            }
-        };
-
-        const config = statusConfig[status];
-
-        // Validate PR number - use Number.isSafeInteger since pr.number is typed as number
-        // Display empty string for invalid numbers to avoid showing misleading "#0"
-        const prNumberDisplay = Number.isSafeInteger(pr.number) && pr.number > 0 ? `#${pr.number}` : '';
-
         const prElement = document.createElement('div');
         prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
-        prElement.innerHTML = `
-            <div class="flex items-start justify-between gap-4 mb-3">
-                <div class="flex items-center gap-2 shrink-0">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${config.class}">
-                        ${config.icon}
-                        ${config.text}
-                    </span>
-                    ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-400">${prNumberDisplay}</span>` : ''}
-                </div>
-                <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
-                   class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                   title="GitHubで開く">
-                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                        <polyline points="15 3 21 3 21 9"></polyline>
-                        <line x1="10" y1="14" x2="21" y2="3"></line>
-                    </svg>
-                </a>
-            </div>
-            <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8">${escapeHtml(pr.title)}</h3>
-            <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
-                <span class="flex items-center gap-1">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="12" cy="7" r="4"></circle>
-                    </svg>
-                    ${escapeHtml(pr.user?.login ?? 'unknown')}
-                </span>
-                <span class="flex items-center gap-1">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="16" y1="2" x2="16" y2="6"></line>
-                        <line x1="8" y1="2" x2="8" y2="6"></line>
-                        <line x1="3" y1="10" x2="21" y2="10"></line>
-                    </svg>
-                    ${createdDate}
-                </span>
-            </div>
-        `;
+        prElement.innerHTML = generatePRItemHtml(pr);
         prList.appendChild(prElement);
     });
 
@@ -1078,42 +707,6 @@ function displayPagination(totalPages: number, totalItems: number): void {
     paginationContainer.appendChild(paginationEl);
 }
 
-function getPageNumbersToShow(current: number, total: number): (number | string)[] {
-    const pages: (number | string)[] = [];
-    const delta = 1; // Number of pages to show around current page
-
-    if (total <= 7) {
-        // Show all pages if total is small
-        for (let i = 1; i <= total; i++) {
-            pages.push(i);
-        }
-    } else {
-        // Always show first page
-        pages.push(1);
-
-        if (current > delta + 2) {
-            pages.push('...');
-        }
-
-        // Pages around current
-        const start = Math.max(2, current - delta);
-        const end = Math.min(total - 1, current + delta);
-
-        for (let i = start; i <= end; i++) {
-            pages.push(i);
-        }
-
-        if (current < total - delta - 1) {
-            pages.push('...');
-        }
-
-        // Always show last page
-        pages.push(total);
-    }
-
-    return pages;
-}
-
 function goToPage(page: number): void {
     const totalPages = Math.ceil(currentPRs.length / ITEMS_PER_PAGE);
     if (page < 1 || page > totalPages) return;
@@ -1126,32 +719,6 @@ function goToPage(page: number): void {
     if (prListSection) {
         prListSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-}
-
-function escapeHtml(text: string | null | undefined): string {
-    if (text == null) return '';
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-// Sanitize URL to prevent XSS attacks - only allows HTTPS URLs from github.com
-function sanitizeUrl(url: string | null | undefined): string {
-    if (url == null) return '#';
-    try {
-        const parsedUrl = new URL(String(url).trim());
-        // Only allow HTTPS GitHub URLs using URL constructor validation
-        // The URL constructor normalizes and encodes the URL, so no additional escaping needed
-        if (parsedUrl.protocol === 'https:' && parsedUrl.hostname === 'github.com') {
-            return parsedUrl.href;
-        }
-    } catch {
-        // Invalid URL
-    }
-    return '#';
 }
 
 // UI State Management
@@ -1239,15 +806,6 @@ function hideResults(): void {
 }
 
 // Rate Limit Display Functions
-function formatCountdown(resetTimestamp: number): string {
-    const now = Date.now();
-    const diffMs = resetTimestamp * 1000 - now;
-    const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
-    const minutes = Math.floor(diffSecs / 60);
-    const seconds = diffSecs % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
-
 function startRateLimitCountdown(resetTimestamp: number): void {
     // Clear any existing countdown
     if (rateLimitCountdownInterval !== null) {
@@ -1284,28 +842,24 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
     const resetCountdown = formatCountdown(info.reset);
     const usagePercent = Math.round((info.used / info.limit) * 100);
 
-    // Determine if authenticated based on limit (10 = unauthenticated, 30 = authenticated for search)
-    const isAuthenticated = info.limit > 10;
+    // Determine rate limit status and authentication state
+    const { statusText, isAuthenticated } = getRateLimitStatus(info.remaining, info.limit);
     const authStatusBadge = isAuthenticated
         ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Authenticated</span>'
         : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">Unauthenticated</span>';
 
-    // Determine status color based on remaining requests
+    // Map status text to CSS classes
     let statusClass: string;
-    let statusText: string;
     let statusBgClass: string;
-    if (info.remaining > info.limit * 0.5) {
+    if (statusText === 'Good') {
         statusClass = 'text-green-600 dark:text-green-400';
         statusBgClass = 'bg-green-100 dark:bg-green-900/30';
-        statusText = 'Good';
-    } else if (info.remaining > info.limit * 0.2) {
+    } else if (statusText === 'Warning') {
         statusClass = 'text-yellow-600 dark:text-yellow-400';
         statusBgClass = 'bg-yellow-100 dark:bg-yellow-900/30';
-        statusText = 'Warning';
     } else {
         statusClass = 'text-red-600 dark:text-red-400';
         statusBgClass = 'bg-red-100 dark:bg-red-900/30';
-        statusText = 'Low';
     }
 
     const cacheIndicator = fromCache
