@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { filterPRs } from '../lib';
 import type { PullRequest } from '../lib';
 
-function makePR(overrides: Partial<PullRequest> = {}): PullRequest {
+function createTestPR(overrides: Partial<PullRequest> = {}): PullRequest {
     return {
         id: 1,
         number: 100,
@@ -18,10 +18,10 @@ function makePR(overrides: Partial<PullRequest> = {}): PullRequest {
 
 describe('filterPRs', () => {
     const prs: PullRequest[] = [
-        makePR({ id: 1, title: 'Add login feature', state: 'closed', merged_at: '2024-06-02T00:00:00Z' }),
-        makePR({ id: 2, title: 'Fix bug in parser', state: 'closed', merged_at: null }),
-        makePR({ id: 3, title: 'Update README', state: 'open', merged_at: null }),
-        makePR({ id: 4, title: 'Add logout feature', state: 'closed', merged_at: '2024-06-03T00:00:00Z' }),
+        createTestPR({ id: 1, title: 'Add login feature', state: 'closed', merged_at: '2024-06-02T00:00:00Z' }),
+        createTestPR({ id: 2, title: 'Fix bug in parser', state: 'closed', merged_at: null }),
+        createTestPR({ id: 3, title: 'Update README', state: 'open', merged_at: null }),
+        createTestPR({ id: 4, title: 'Add logout feature', state: 'closed', merged_at: '2024-06-03T00:00:00Z' }),
     ];
 
     it('returns all PRs when filter is "all" and no search text', () => {
@@ -70,7 +70,7 @@ describe('filterPRs', () => {
     });
 
     it('handles PRs with null title gracefully', () => {
-        const prsWithNull = [makePR({ title: null })];
+        const prsWithNull = [createTestPR({ title: null })];
         const result = filterPRs(prsWithNull, 'all', 'test');
         expect(result).toHaveLength(0);
     });
