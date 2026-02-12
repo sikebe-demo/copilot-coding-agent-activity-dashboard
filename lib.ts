@@ -458,7 +458,7 @@ export function getApiErrorMessage(
 
         if (isRateLimit) {
             const resetTime = rateLimitInfo?.reset
-                ? new Date(rateLimitInfo.reset * 1000).toLocaleString('ja-JP', { timeZoneName: 'short' })
+                ? new Date(rateLimitInfo.reset * 1000).toLocaleString('en-US', { timeZoneName: 'short' })
                 : 'unknown';
             return `API rate limit reached. Reset at: ${resetTime}. Try again later or use a different token.`;
         } else {
@@ -655,7 +655,7 @@ export function getPRStatus(pr: PullRequest): keyof StatusConfigMap {
  * Returns a pure HTML string with no DOM dependencies.
  */
 export function generatePRItemHtml(pr: PullRequest): string {
-    const createdDate = new Date(pr.created_at).toLocaleDateString('ja-JP');
+    const createdDate = new Date(pr.created_at).toLocaleDateString('en-US');
     const status = getPRStatus(pr);
     const config = PR_STATUS_CONFIG[status];
     const prNumberDisplay = formatPRNumber(pr.number);
@@ -671,7 +671,7 @@ export function generatePRItemHtml(pr: PullRequest): string {
                 </div>
                 <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
                    class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                   title="GitHubで開く">
+                   title="Open in GitHub">
                     <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                         <polyline points="15 3 21 3 21 9"></polyline>
