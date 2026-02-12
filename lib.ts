@@ -90,6 +90,7 @@ export const ITEMS_PER_PAGE = 10;
 export const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
 export const CACHE_VERSION = 'v2';
 export const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+export const CACHE_CLEANUP_INTERVAL_MS = 60 * 1000; // 1 minute
 
 // ============================================================================
 // HTML Escaping & Sanitization
@@ -233,7 +234,18 @@ export function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo
     }
 }
 
+let lastCacheCleanupTime = 0;
+
+export function resetCacheCleanupTimer(): void {
+    lastCacheCleanupTime = 0;
+}
+
 export function clearOldCache(storage: Storage = localStorage): void {
+    const now = Date.now();
+    if (now - lastCacheCleanupTime < CACHE_CLEANUP_INTERVAL_MS) {
+        return; // Skip if cleaned recently
+    }
+    lastCacheCleanupTime = now;
     try {
         const keysToRemove: string[] = [];
         const currentVersionPrefix = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_`;

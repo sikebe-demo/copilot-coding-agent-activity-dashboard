@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getCacheKey,
   getFromCache,
@@ -8,6 +8,8 @@ import {
   CACHE_KEY_PREFIX,
   CACHE_VERSION,
   CACHE_DURATION_MS,
+  resetCacheCleanupTimer,
+  CACHE_CLEANUP_INTERVAL_MS,
 } from '../lib';
 import type { PullRequest, CacheEntry, AllPRCounts } from '../lib';
 
@@ -15,8 +17,8 @@ import type { PullRequest, CacheEntry, AllPRCounts } from '../lib';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createMockStorage(): Storage {
-  const store = new Map<string, string>();
+function createMockStorage(initialData: Record<string, string> = {}): Storage {
+  const store = new Map<string, string>(Object.entries(initialData));
   return {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => { store.set(key, value); },
@@ -195,6 +197,7 @@ describe('clearOldCache', () => {
   beforeEach(() => {
     storage = createMockStorage();
     vi.restoreAllMocks();
+    resetCacheCleanupTimer();
   });
 
   it('should remove legacy cache entries (no version prefix)', () => {
@@ -285,5 +288,47 @@ describe('isCacheEntry', () => {
 
   it('should return false when allPRCounts is missing', () => {
     expect(isCacheEntry({ data: [], timestamp: 1 })).toBe(false);
+  });
+});
+
+describe('clearOldCache throttle', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-15T00:00:00Z'));
+    resetCacheCleanupTimer();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('should execute on first call', () => {
+    const storage = createMockStorage({
+      'copilot_pr_cache_old_key': JSON.stringify({ data: [], timestamp: 0, rateLimitInfo: null, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 } }),
+    });
+    clearOldCache(storage);
+    expect(storage.getItem('copilot_pr_cache_old_key')).toBeNull();
+  });
+
+  it('should skip cleanup when called within throttle interval', () => {
+    const storage = createMockStorage();
+    clearOldCache(storage);
+
+    storage.setItem('copilot_pr_cache_old_key', JSON.stringify({ data: [], timestamp: 0, rateLimitInfo: null, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 } }));
+
+    vi.advanceTimersByTime(30_000); // 30 seconds, less than 60s throttle
+    clearOldCache(storage);
+    expect(storage.getItem('copilot_pr_cache_old_key')).not.toBeNull();
+  });
+
+  it('should execute again after throttle interval', () => {
+    const storage = createMockStorage();
+    clearOldCache(storage);
+
+    storage.setItem('copilot_pr_cache_old_key', JSON.stringify({ data: [], timestamp: 0, rateLimitInfo: null, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 } }));
+
+    vi.advanceTimersByTime(CACHE_CLEANUP_INTERVAL_MS + 1);
+    clearOldCache(storage);
+    expect(storage.getItem('copilot_pr_cache_old_key')).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import {
     getAllFilterColorClasses,
     FILTER_STYLE_MAP,
     FILTER_INACTIVE_STYLE,
+    createRatioHtml,
 } from '../lib';
 import type { PullRequest, RateLimitInfo } from '../lib';
 
@@ -54,6 +55,25 @@ describe('buildSearchUrl', () => {
         // Spaces and colons should be percent-encoded
         expect(url).not.toContain(' ');
         expect(url).toContain(encodeURIComponent(query));
+    });
+
+    it('should produce a valid URL that can be parsed', () => {
+        const url = buildSearchUrl('repo:owner/repo is:pr', 100, 1);
+        const parsed = new URL(url);
+        expect(parsed.protocol).toBe('https:');
+        expect(parsed.hostname).toBe('api.github.com');
+        expect(parsed.pathname).toBe('/search/issues');
+    });
+
+    it('should correctly encode the query and preserve all parameters when parsed', () => {
+        const query = 'repo:owner/repo is:pr author:app/copilot-swe-agent';
+        const url = buildSearchUrl(query, 100, 2);
+        const parsed = new URL(url);
+        expect(parsed.searchParams.get('q')).toBe(query);
+        expect(parsed.searchParams.get('per_page')).toBe('100');
+        expect(parsed.searchParams.get('page')).toBe('2');
+        expect(parsed.searchParams.get('sort')).toBe('created');
+        expect(parsed.searchParams.get('order')).toBe('desc');
     });
 });
 
@@ -444,5 +464,42 @@ describe('getAllFilterColorClasses', () => {
         const classes = getAllFilterColorClasses();
         const uniqueClasses = new Set(classes);
         expect(classes.length).toBe(uniqueClasses.size);
+    });
+});
+
+// ============================================================================
+// createRatioHtml
+// ============================================================================
+
+describe('createRatioHtml', () => {
+    it('should display copilot count and total when total > 0', () => {
+        const html = createRatioHtml(5, 10, 'text-green-700');
+        expect(html).toContain('5');
+        expect(html).toContain('/ 10');
+        expect(html).toContain('text-green-700');
+    });
+
+    it('should display dash for total when total is 0', () => {
+        const html = createRatioHtml(0, 0, 'text-green-700');
+        expect(html).toContain('0');
+        expect(html).toContain('/ -');
+    });
+
+    it('should handle negative copilot count', () => {
+        const html = createRatioHtml(-1, 10, 'text-red-600');
+        expect(html).toContain('-1');
+        expect(html).toContain('/ 10');
+    });
+
+    it('should handle very large numbers', () => {
+        const html = createRatioHtml(999999, 1000000, 'text-blue-600');
+        expect(html).toContain('999999');
+        expect(html).toContain('/ 1000000');
+    });
+
+    it('should handle negative total', () => {
+        const html = createRatioHtml(5, -1, 'text-green-700');
+        // negative total means totalCount > 0 is false, so should show dash
+        expect(html).toContain('/ -');
     });
 });
