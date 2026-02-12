@@ -717,6 +717,9 @@ export function generateEmptyListHtml(): string {
         `;
 }
 
+/**
+ * Generates HTML for the empty PR list state when filters/search yield no results.
+ */
 export function generateFilteredEmptyListHtml(): string {
     return `
             <div class="text-center py-16">

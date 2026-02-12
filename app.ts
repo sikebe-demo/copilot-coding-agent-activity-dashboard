@@ -710,7 +710,7 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
     prList.innerHTML = '';
 
     if (currentPRs.length === 0) {
-        const isFiltered = activeStatusFilter !== 'all' || activeSearchText !== '';
+        const isFiltered = activeStatusFilter !== 'all' || activeSearchText.trim() !== '';
         prList.innerHTML = isFiltered ? generateFilteredEmptyListHtml() : generateEmptyListHtml();
         displayPagination(0, 0);
         return;
