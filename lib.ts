@@ -182,20 +182,38 @@ export function getCacheKey(owner: string, repo: string, fromDate: string, toDat
     return `${CACHE_KEY_PREFIX}${CACHE_VERSION}_${paramsKey}${authSuffix}`;
 }
 
+/**
+ * Type guard that validates a parsed object conforms to the CacheEntry schema.
+ */
+export function isCacheEntry(value: unknown): value is CacheEntry {
+    if (typeof value !== 'object' || value === null) return false;
+    const obj = value as Record<string, unknown>;
+    return (
+        Array.isArray(obj.data) &&
+        typeof obj.timestamp === 'number' &&
+        typeof obj.allPRCounts === 'object' &&
+        obj.allPRCounts !== null
+    );
+}
+
 export function getFromCache(cacheKey: string, storage: Storage = localStorage): CacheEntry | null {
     try {
         const cached = storage.getItem(cacheKey);
         if (!cached) return null;
 
-        const entry: CacheEntry = JSON.parse(cached);
-        const now = Date.now();
-
-        if (now - entry.timestamp > CACHE_DURATION_MS) {
+        const parsed: unknown = JSON.parse(cached);
+        if (!isCacheEntry(parsed)) {
             storage.removeItem(cacheKey);
             return null;
         }
 
-        return entry;
+        const now = Date.now();
+        if (now - parsed.timestamp > CACHE_DURATION_MS) {
+            storage.removeItem(cacheKey);
+            return null;
+        }
+
+        return parsed;
     } catch {
         return null;
     }
@@ -594,7 +612,7 @@ export function sortPRsByDate(prs: PullRequest[]): PullRequest[] {
 /**
  * Filter type for PR status: 'all' shows everything, others match the PR status.
  */
-export type PRFilterStatus = 'all' | keyof StatusConfigMap;
+export type PRFilterStatus = 'all' | 'merged' | 'closed' | 'open';
 
 /**
  * Filters PRs by status and/or search text.

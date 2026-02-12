@@ -23,7 +23,6 @@ import {
     buildSearchQuery,
     buildSearchUrl,
     buildApiHeaders,
-    adjustClosedCount,
     createRatioHtml,
     sortPRsByDate,
     filterPRs,
@@ -42,15 +41,32 @@ import type {
     PRFilterStatus,
 } from './lib';
 
-// Timer for rate limit countdown
-let rateLimitCountdownInterval: number | null = null;
+// Consolidated application state
+interface AppState {
+    rateLimitCountdownInterval: number | null;
+    currentRequestId: number;
+    chartInstance: Chart | null;
+    ChartCtor: ChartStatic | null;
+    currentPage: number;
+    currentPRs: PullRequest[];
+    allFetchedPRs: PullRequest[];
+    activeStatusFilter: PRFilterStatus;
+    activeSearchText: string;
+    currentAbortController: AbortController | null;
+}
 
-// Request sequencing: ignore stale responses from earlier searches
-let currentRequestId = 0;
-
-// Global chart instance and lazily-loaded Chart.js constructor
-let chartInstance: Chart | null = null;
-let ChartCtor: ChartStatic | null = null;
+const state: AppState = {
+    rateLimitCountdownInterval: null,
+    currentRequestId: 0,
+    chartInstance: null,
+    ChartCtor: null,
+    currentPage: 1,
+    currentPRs: [],
+    allFetchedPRs: [],
+    activeStatusFilter: 'all',
+    activeSearchText: '',
+    currentAbortController: null,
+};
 
 /**
  * Lazily load Chart.js with only the components needed for bar charts.
@@ -58,7 +74,7 @@ let ChartCtor: ChartStatic | null = null;
  * the user actually views results, not on initial page load.
  */
 async function loadChartJS(): Promise<ChartStatic> {
-    if (ChartCtor) return ChartCtor;
+    if (state.ChartCtor) return state.ChartCtor;
     const {
         Chart: ChartJS,
         BarController,
@@ -69,18 +85,9 @@ async function loadChartJS(): Promise<ChartStatic> {
         Legend,
     } = await import('chart.js');
     ChartJS.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
-    ChartCtor = ChartJS;
+    state.ChartCtor = ChartJS;
     return ChartJS;
 }
-
-// Pagination state
-let currentPage = 1;
-let currentPRs: PullRequest[] = [];
-
-// Filter state
-let allFetchedPRs: PullRequest[] = [];
-let activeStatusFilter: PRFilterStatus = 'all';
-let activeSearchText = '';
 
 // Default loading text (shared between index.html initial state and resetLoadingProgress)
 const DEFAULT_LOADING_TITLE = 'Fetching data...';
@@ -128,7 +135,7 @@ function toggleTheme(): void {
     updateThemeToggleLabel();
 
     // Update chart if it exists
-    if (chartInstance) {
+    if (state.chartInstance) {
         updateChartTheme();
     }
 }
@@ -193,7 +200,7 @@ function initializeFilters(): void {
         button.addEventListener('click', () => {
             const filter = button.dataset.filter as PRFilterStatus | undefined;
             if (filter) {
-                activeStatusFilter = filter;
+                state.activeStatusFilter = filter;
                 updateFilterButtonStyles();
                 applyFilters();
             }
@@ -206,15 +213,15 @@ function initializeFilters(): void {
     searchInput?.addEventListener('input', () => {
         if (debounceTimer !== null) clearTimeout(debounceTimer);
         debounceTimer = window.setTimeout(() => {
-            activeSearchText = searchInput.value;
+            state.activeSearchText = searchInput.value;
             applyFilters();
         }, 300);
     });
 }
 
 function applyFilters(): void {
-    if (allFetchedPRs.length === 0) return;
-    displayPRList(allFetchedPRs, true);
+    if (state.allFetchedPRs.length === 0) return;
+    displayPRList(state.allFetchedPRs, true);
 }
 
 function resetFilterUI(): void {
@@ -265,7 +272,7 @@ function updateFilterButtonStyles(): void {
 
     filterButtons.forEach((button) => {
         const filter = button.dataset.filter ?? '';
-        const isActive = filter === activeStatusFilter;
+        const isActive = filter === state.activeStatusFilter;
 
         // Remove all color-related classes and hover classes
         button.classList.remove(...allColorClasses, ...allHoverClasses);
@@ -315,22 +322,30 @@ async function handleFormSubmit(e: Event): Promise<void> {
     hideResults();
     hideRateLimitInfo();
 
-    const requestId = ++currentRequestId;
+    // Abort any in-flight requests from previous search
+    if (state.currentAbortController) {
+        state.currentAbortController.abort();
+    }
+    state.currentAbortController = new AbortController();
+
+    const requestId = ++state.currentRequestId;
 
     try {
-        const result = await fetchCopilotPRsWithCache(owner, repo, fromDate, toDate, token);
+        const result = await fetchCopilotPRsWithCache(owner, repo, fromDate, toDate, token, state.currentAbortController.signal);
         // Ignore stale responses from earlier searches
-        if (requestId !== currentRequestId) return;
+        if (requestId !== state.currentRequestId) return;
         await displayResults(result.prs, fromDate, toDate, result.allPRCounts);
         if (result.rateLimitInfo) {
             displayRateLimitInfo(result.rateLimitInfo, result.fromCache);
         }
     } catch (error) {
         // Ignore errors from stale requests
-        if (requestId !== currentRequestId) return;
+        if (requestId !== state.currentRequestId) return;
+        // Ignore AbortError — it means we intentionally cancelled a previous request
+        if (error instanceof DOMException && error.name === 'AbortError') return;
         showError(error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
-        if (requestId === currentRequestId) {
+        if (requestId === state.currentRequestId) {
             hideLoading();
         }
     }
@@ -350,7 +365,8 @@ async function fetchCopilotPRsWithCache(
     repo: string,
     fromDate: string,
     toDate: string,
-    token: string
+    token: string,
+    signal: AbortSignal
 ): Promise<FetchResult> {
     // Clean up old cache entries
     clearOldCache();
@@ -372,7 +388,7 @@ async function fetchCopilotPRsWithCache(
         };
     }
 
-    const result = await fetchCopilotPRsWithSearchAPI(owner, repo, fromDate, toDate, token);
+    const result = await fetchCopilotPRsWithSearchAPI(owner, repo, fromDate, toDate, token, signal);
 
     // Save to cache
     saveToCache(cacheKey, result.prs, result.rateLimitInfo, result.allPRCounts);
@@ -389,7 +405,8 @@ async function fetchCopilotPRsWithSearchAPI(
     repo: string,
     fromDate: string,
     toDate: string,
-    token: string
+    token: string,
+    signal: AbortSignal
 ): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null; allPRCounts: AllPRCounts }> {
     const headers = buildApiHeaders(token);
 
@@ -409,7 +426,7 @@ async function fetchCopilotPRsWithSearchAPI(
     while (true) {
         const url = buildSearchUrl(query, perPage, page);
 
-        const response = await fetch(url, { headers });
+        const response = await fetch(url, { headers, signal });
 
         // Extract rate limit info from response
         rateLimitInfo = extractRateLimitInfo(response.headers);
@@ -478,7 +495,7 @@ async function fetchCopilotPRsWithSearchAPI(
     updateLoadingPhase('Fetching repository stats...', 'Loading PR statistics for comparison');
 
     // Fetch all PR counts (total, merged, closed, open) for all authors
-    const allPRCounts = await fetchAllPRCounts(owner, repo, fromDate, toDate, headers, rateLimitInfo);
+    const allPRCounts = await fetchAllPRCounts(owner, repo, fromDate, toDate, headers, rateLimitInfo, signal);
 
     return { prs: allPRs, rateLimitInfo: allPRCounts.rateLimitInfo ?? rateLimitInfo, allPRCounts: allPRCounts.counts };
 }
@@ -491,19 +508,18 @@ async function fetchAllPRCounts(
     fromDate: string,
     toDate: string,
     headers: HeadersInit,
-    existingRateLimitInfo: RateLimitInfo | null
+    existingRateLimitInfo: RateLimitInfo | null,
+    signal: AbortSignal
 ): Promise<{ counts: AllPRCounts; rateLimitInfo: RateLimitInfo | null }> {
     const defaultCounts: AllPRCounts = { total: 0, merged: 0, closed: 0, open: 0 };
     let rateLimitInfo = existingRateLimitInfo;
 
-    // Build search queries for different states
-    // Note: In GitHub, 'closed' PRs include both merged and unmerged PRs
-    // So we query 'is:closed' directly and calculate closed_not_merged = closed - merged
+    // Build search queries for total, merged, and open counts
+    // Closed count is calculated as total - merged - open (avoids a 4th API call)
     const queries = [
         { key: 'total' as const, query: `repo:${owner}/${repo} is:pr created:${fromDate}..${toDate}` },
         { key: 'merged' as const, query: `repo:${owner}/${repo} is:pr is:merged created:${fromDate}..${toDate}` },
         { key: 'open' as const, query: `repo:${owner}/${repo} is:pr is:open created:${fromDate}..${toDate}` },
-        { key: 'closed' as const, query: `repo:${owner}/${repo} is:pr is:closed created:${fromDate}..${toDate}` }
     ];
 
     const counts: AllPRCounts = { ...defaultCounts };
@@ -516,7 +532,7 @@ async function fetchAllPRCounts(
         const results = await Promise.allSettled(
             queries.map(async ({ key, query }) => {
                 const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
-                const response = await fetch(url, { headers });
+                const response = await fetch(url, { headers, signal });
                 return { key, response };
             })
         );
@@ -545,10 +561,13 @@ async function fetchAllPRCounts(
             succeeded.add(key);
         }
 
-        // Adjust closed count to represent only "closed but not merged" PRs
-        const adjustedCounts = adjustClosedCount(counts, succeeded);
+        // Calculate closed count from total - merged - open (avoids a 4th API call)
+        if (succeeded.has('total') && succeeded.has('merged') && succeeded.has('open')) {
+            counts.closed = Math.max(0, counts.total - counts.merged - counts.open);
+            succeeded.add('closed');
+        }
 
-        return { counts: adjustedCounts, rateLimitInfo };
+        return { counts, rateLimitInfo };
     } catch (error) {
         console.warn('Error fetching all PR counts:', error);
         return { counts: defaultCounts, rateLimitInfo };
@@ -586,13 +605,13 @@ async function displayResults(prs: PullRequest[], fromDate: string, toDate: stri
     await displayChart(prs, fromDate, toDate);
 
     // Store all fetched PRs for filtering and reset filter state
-    allFetchedPRs = sortPRsByDate(prs);
-    activeStatusFilter = 'all';
-    activeSearchText = '';
+    state.allFetchedPRs = sortPRsByDate(prs);
+    state.activeStatusFilter = 'all';
+    state.activeSearchText = '';
     resetFilterUI();
 
     // Display PR list
-    displayPRList(allFetchedPRs);
+    displayPRList(state.allFetchedPRs);
 
     showResults();
 }
@@ -638,15 +657,15 @@ async function displayChart(prs: PullRequest[], fromDate: string, toDate: string
     canvas.setAttribute('aria-describedby', descriptionId);
 
     // Destroy previous chart if exists
-    if (chartInstance) {
-        chartInstance.destroy();
+    if (state.chartInstance) {
+        state.chartInstance.destroy();
     }
 
     const isDark = document.documentElement.classList.contains('dark');
     const textColor = isDark ? '#f1f5f9' : '#1e293b';
     const gridColor = isDark ? '#475569' : '#e2e8f0';
 
-    chartInstance = new ChartJS(canvas, {
+    state.chartInstance = new ChartJS(canvas, {
         type: 'bar',
         data: {
             labels: dates.map(date => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
@@ -740,35 +759,35 @@ async function displayChart(prs: PullRequest[], fromDate: string, toDate: string
 }
 
 function updateChartTheme(): void {
-    if (!chartInstance) return;
+    if (!state.chartInstance) return;
 
     const isDark = document.documentElement.classList.contains('dark');
     const textColor = isDark ? '#f1f5f9' : '#1e293b';
     const gridColor = isDark ? '#475569' : '#e2e8f0';
 
-    if (chartInstance.options.plugins?.legend?.labels) {
-        chartInstance.options.plugins.legend.labels.color = textColor;
+    if (state.chartInstance.options.plugins?.legend?.labels) {
+        state.chartInstance.options.plugins.legend.labels.color = textColor;
     }
-    if (chartInstance.options.plugins?.tooltip) {
-        chartInstance.options.plugins.tooltip.backgroundColor = isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)';
-        chartInstance.options.plugins.tooltip.titleColor = textColor;
-        chartInstance.options.plugins.tooltip.bodyColor = textColor;
-        chartInstance.options.plugins.tooltip.borderColor = isDark ? '#334155' : '#e2e8f0';
+    if (state.chartInstance.options.plugins?.tooltip) {
+        state.chartInstance.options.plugins.tooltip.backgroundColor = isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)';
+        state.chartInstance.options.plugins.tooltip.titleColor = textColor;
+        state.chartInstance.options.plugins.tooltip.bodyColor = textColor;
+        state.chartInstance.options.plugins.tooltip.borderColor = isDark ? '#334155' : '#e2e8f0';
     }
-    if (chartInstance.options.scales?.x?.ticks) {
-        chartInstance.options.scales.x.ticks.color = textColor;
+    if (state.chartInstance.options.scales?.x?.ticks) {
+        state.chartInstance.options.scales.x.ticks.color = textColor;
     }
-    if (chartInstance.options.scales?.x?.grid) {
-        chartInstance.options.scales.x.grid.color = gridColor;
+    if (state.chartInstance.options.scales?.x?.grid) {
+        state.chartInstance.options.scales.x.grid.color = gridColor;
     }
-    if (chartInstance.options.scales?.y?.ticks) {
-        chartInstance.options.scales.y.ticks.color = textColor;
+    if (state.chartInstance.options.scales?.y?.ticks) {
+        state.chartInstance.options.scales.y.ticks.color = textColor;
     }
-    if (chartInstance.options.scales?.y?.grid) {
-        chartInstance.options.scales.y.grid.color = gridColor;
+    if (state.chartInstance.options.scales?.y?.grid) {
+        state.chartInstance.options.scales.y.grid.color = gridColor;
     }
 
-    chartInstance.update();
+    state.chartInstance.update();
 }
 
 function displayPRList(prs: PullRequest[], resetPage = true): void {
@@ -777,24 +796,24 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
 
     // Apply filters and store globally, resetting page if needed
     if (resetPage) {
-        currentPRs = sortPRsByDate(filterPRs(prs, activeStatusFilter, activeSearchText));
-        currentPage = 1;
+        state.currentPRs = sortPRsByDate(filterPRs(prs, state.activeStatusFilter, state.activeSearchText));
+        state.currentPage = 1;
     }
 
     prList.innerHTML = '';
 
-    if (currentPRs.length === 0) {
-        const isFiltered = activeStatusFilter !== 'all' || activeSearchText.trim() !== '';
+    if (state.currentPRs.length === 0) {
+        const isFiltered = state.activeStatusFilter !== 'all' || state.activeSearchText.trim() !== '';
         prList.innerHTML = isFiltered ? generateFilteredEmptyListHtml() : generateEmptyListHtml();
         displayPagination(0, 0);
         return;
     }
 
     // Calculate pagination
-    const totalPages = Math.ceil(currentPRs.length / ITEMS_PER_PAGE);
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, currentPRs.length);
-    const paginatedPRs = currentPRs.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(state.currentPRs.length / ITEMS_PER_PAGE);
+    const startIndex = (state.currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, state.currentPRs.length);
+    const paginatedPRs = state.currentPRs.slice(startIndex, endIndex);
 
     paginatedPRs.forEach((pr) => {
         const prElement = document.createElement('div');
@@ -879,7 +898,7 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
     });
 
     // Display pagination
-    displayPagination(totalPages, currentPRs.length);
+    displayPagination(totalPages, state.currentPRs.length);
 }
 
 function displayPagination(totalPages: number, totalItems: number): void {
@@ -892,8 +911,8 @@ function displayPagination(totalPages: number, totalItems: number): void {
         return;
     }
 
-    const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
-    const endItem = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
+    const startItem = (state.currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(state.currentPage * ITEMS_PER_PAGE, totalItems);
 
     const navEl = document.createElement('nav');
     navEl.setAttribute('aria-label', 'PR list pagination');
@@ -913,7 +932,7 @@ function displayPagination(totalPages: number, totalItems: number): void {
     // Previous button
     const prevButton = document.createElement('button');
     prevButton.className = `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-        currentPage === 1
+        state.currentPage === 1
             ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
     }`;
@@ -923,14 +942,14 @@ function displayPagination(totalPages: number, totalItems: number): void {
             <polyline points="15 18 9 12 15 6"></polyline>
         </svg>
     `;
-    prevButton.disabled = currentPage === 1;
-    prevButton.addEventListener('click', () => goToPage(currentPage - 1));
+    prevButton.disabled = state.currentPage === 1;
+    prevButton.addEventListener('click', () => goToPage(state.currentPage - 1));
 
     // Page numbers
     const pageNumbers = document.createElement('div');
     pageNumbers.className = 'flex items-center gap-1';
 
-    const pagesToShow = getPageNumbersToShow(currentPage, totalPages);
+    const pagesToShow = getPageNumbersToShow(state.currentPage, totalPages);
     pagesToShow.forEach((page) => {
         if (page === '...') {
             const ellipsis = document.createElement('span');
@@ -942,13 +961,13 @@ function displayPagination(totalPages: number, totalItems: number): void {
             const pageButton = document.createElement('button');
             const pageNum = page as number;
             pageButton.className = `w-9 h-9 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                pageNum === currentPage
+                pageNum === state.currentPage
                     ? 'bg-indigo-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`;
             pageButton.textContent = String(pageNum);
             pageButton.setAttribute('aria-label', `Page ${pageNum}`);
-            if (pageNum === currentPage) {
+            if (pageNum === state.currentPage) {
                 pageButton.setAttribute('aria-current', 'page');
             }
             pageButton.addEventListener('click', () => goToPage(pageNum));
@@ -959,7 +978,7 @@ function displayPagination(totalPages: number, totalItems: number): void {
     // Next button
     const nextButton = document.createElement('button');
     nextButton.className = `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-        currentPage === totalPages
+        state.currentPage === totalPages
             ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
     }`;
@@ -969,8 +988,8 @@ function displayPagination(totalPages: number, totalItems: number): void {
             <polyline points="9 18 15 12 9 6"></polyline>
         </svg>
     `;
-    nextButton.disabled = currentPage === totalPages;
-    nextButton.addEventListener('click', () => goToPage(currentPage + 1));
+    nextButton.disabled = state.currentPage === totalPages;
+    nextButton.addEventListener('click', () => goToPage(state.currentPage + 1));
 
     navContainer.appendChild(prevButton);
     navContainer.appendChild(pageNumbers);
@@ -983,11 +1002,11 @@ function displayPagination(totalPages: number, totalItems: number): void {
 }
 
 function goToPage(page: number): void {
-    const totalPages = Math.ceil(currentPRs.length / ITEMS_PER_PAGE);
+    const totalPages = Math.ceil(state.currentPRs.length / ITEMS_PER_PAGE);
     if (page < 1 || page > totalPages) return;
 
-    currentPage = page;
-    displayPRList(currentPRs, false);
+    state.currentPage = page;
+    displayPRList(state.currentPRs, false);
 
     // Scroll to PR list section
     const prListSection = document.getElementById('prList');
@@ -1075,7 +1094,7 @@ function showResults(): void {
     }
 
     // Announce results to screen readers
-    announceToScreenReader(`Results loaded. Found ${currentPRs.length} pull requests.`);
+    announceToScreenReader(`Results loaded. Found ${state.currentPRs.length} pull requests.`);
 }
 
 function announceToScreenReader(message: string): void {
@@ -1104,9 +1123,9 @@ function hideResults(): void {
 // Rate Limit Display Functions
 function startRateLimitCountdown(resetTimestamp: number): void {
     // Clear any existing countdown
-    if (rateLimitCountdownInterval !== null) {
-        clearInterval(rateLimitCountdownInterval);
-        rateLimitCountdownInterval = null;
+    if (state.rateLimitCountdownInterval !== null) {
+        clearInterval(state.rateLimitCountdownInterval);
+        state.rateLimitCountdownInterval = null;
     }
 
     const countdownEl = document.getElementById('rateLimitCountdown');
@@ -1118,9 +1137,9 @@ function startRateLimitCountdown(resetTimestamp: number): void {
         countdownEl.textContent = countdown;
 
         // Stop countdown when it reaches 0:00
-        if (countdown === '0:00' && rateLimitCountdownInterval !== null) {
-            clearInterval(rateLimitCountdownInterval);
-            rateLimitCountdownInterval = null;
+        if (countdown === '0:00' && state.rateLimitCountdownInterval !== null) {
+            clearInterval(state.rateLimitCountdownInterval);
+            state.rateLimitCountdownInterval = null;
         }
     };
 
@@ -1128,7 +1147,7 @@ function startRateLimitCountdown(resetTimestamp: number): void {
     updateCountdown();
 
     // Update every second
-    rateLimitCountdownInterval = window.setInterval(updateCountdown, 1000);
+    state.rateLimitCountdownInterval = window.setInterval(updateCountdown, 1000);
 }
 
 function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
@@ -1217,9 +1236,9 @@ function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
 
 function hideRateLimitInfo(): void {
     // Clear countdown timer
-    if (rateLimitCountdownInterval !== null) {
-        clearInterval(rateLimitCountdownInterval);
-        rateLimitCountdownInterval = null;
+    if (state.rateLimitCountdownInterval !== null) {
+        clearInterval(state.rateLimitCountdownInterval);
+        state.rateLimitCountdownInterval = null;
     }
     const rateLimitEl = document.getElementById('rateLimitInfo');
     if (rateLimitEl) rateLimitEl.classList.add('hidden');

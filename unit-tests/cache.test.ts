@@ -4,6 +4,7 @@ import {
   getFromCache,
   saveToCache,
   clearOldCache,
+  isCacheEntry,
   CACHE_KEY_PREFIX,
   CACHE_VERSION,
   CACHE_DURATION_MS,
@@ -251,5 +252,38 @@ describe('clearOldCache', () => {
     clearOldCache(storage);
 
     expect(storage.getItem(malformedKey)).toBeNull();
+  });
+});
+
+describe('isCacheEntry', () => {
+  it('should return true for valid cache entry', () => {
+    const entry = {
+      data: [createTestPR()],
+      timestamp: Date.now(),
+      rateLimitInfo: null,
+      allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 },
+    };
+    expect(isCacheEntry(entry)).toBe(true);
+  });
+
+  it('should return false for null', () => {
+    expect(isCacheEntry(null)).toBe(false);
+  });
+
+  it('should return false for non-object', () => {
+    expect(isCacheEntry('string')).toBe(false);
+    expect(isCacheEntry(42)).toBe(false);
+  });
+
+  it('should return false when data is not an array', () => {
+    expect(isCacheEntry({ data: 'not-array', timestamp: 1, allPRCounts: {} })).toBe(false);
+  });
+
+  it('should return false when timestamp is missing', () => {
+    expect(isCacheEntry({ data: [], allPRCounts: {} })).toBe(false);
+  });
+
+  it('should return false when allPRCounts is missing', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1 })).toBe(false);
   });
 });
