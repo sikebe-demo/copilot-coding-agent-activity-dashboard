@@ -1,6 +1,9 @@
 // Import Chart.js types only (actual library loaded dynamically for code splitting)
 import type { Chart } from 'chart.js';
 
+// Type alias for the Chart.js constructor (avoids typeof on a type-only import)
+type ChartStatic = typeof Chart;
+
 // Import pure functions and types from lib
 import {
     parseRepoInput,
@@ -47,14 +50,14 @@ let currentRequestId = 0;
 
 // Global chart instance and lazily-loaded Chart.js constructor
 let chartInstance: Chart | null = null;
-let ChartCtor: (typeof Chart) | null = null;
+let ChartCtor: ChartStatic | null = null;
 
 /**
  * Lazily load Chart.js with only the components needed for bar charts.
  * This enables code splitting — Chart.js (~180 KB) is downloaded only when
  * the user actually views results, not on initial page load.
  */
-async function loadChartJS(): Promise<typeof Chart> {
+async function loadChartJS(): Promise<ChartStatic> {
     if (ChartCtor) return ChartCtor;
     const {
         Chart: ChartJS,
