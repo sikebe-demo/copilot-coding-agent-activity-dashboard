@@ -589,7 +589,7 @@ export function sortPRsByDate(prs: PullRequest[]): PullRequest[] {
 /**
  * Filter type for PR status: 'all' shows everything, others match the PR status.
  */
-export type PRFilterStatus = 'all' | 'merged' | 'closed' | 'open';
+export type PRFilterStatus = 'all' | keyof StatusConfigMap;
 
 /**
  * Filters PRs by status and/or search text.

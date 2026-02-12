@@ -185,7 +185,7 @@ function updateFilterButtonStyles(): void {
     const filterButtons = document.querySelectorAll<HTMLButtonElement>('.pr-filter-btn');
 
     // Active & inactive style maps per filter type
-    const activeStyles: Record<string, string> = {
+    const activeStyles: Record<PRFilterStatus, string> = {
         all: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-400 dark:border-indigo-500',
         merged: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-400 dark:border-green-500',
         closed: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-400 dark:border-red-500',
@@ -210,8 +210,11 @@ function updateFilterButtonStyles(): void {
         button.classList.remove(...allColorClasses);
 
         // Add appropriate classes
-        const classes = isActive ? (activeStyles[filter] ?? inactiveStyle) : inactiveStyle;
+        const classes = isActive ? (activeStyles[filter as PRFilterStatus] ?? inactiveStyle) : inactiveStyle;
         button.classList.add(...classes.split(' '));
+
+        // Set aria-pressed for accessibility
+        button.setAttribute('aria-pressed', String(isActive));
     });
 }
 
