@@ -1,5 +1,8 @@
-// Import Chart.js from npm
-import Chart from 'chart.js/auto';
+// Import Chart.js types only (actual library loaded dynamically for code splitting)
+import type { Chart } from 'chart.js';
+
+// Type alias for the Chart.js constructor (avoids typeof on a type-only import)
+type ChartStatic = typeof Chart;
 
 // Import pure functions and types from lib
 import {
@@ -45,8 +48,30 @@ let rateLimitCountdownInterval: number | null = null;
 // Request sequencing: ignore stale responses from earlier searches
 let currentRequestId = 0;
 
-// Global chart instance
+// Global chart instance and lazily-loaded Chart.js constructor
 let chartInstance: Chart | null = null;
+let ChartCtor: ChartStatic | null = null;
+
+/**
+ * Lazily load Chart.js with only the components needed for bar charts.
+ * This enables code splitting — Chart.js (~180 KB) is downloaded only when
+ * the user actually views results, not on initial page load.
+ */
+async function loadChartJS(): Promise<ChartStatic> {
+    if (ChartCtor) return ChartCtor;
+    const {
+        Chart: ChartJS,
+        BarController,
+        BarElement,
+        CategoryScale,
+        LinearScale,
+        Tooltip,
+        Legend,
+    } = await import('chart.js');
+    ChartJS.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
+    ChartCtor = ChartJS;
+    return ChartJS;
+}
 
 // Pagination state
 let currentPage = 1;
@@ -296,7 +321,7 @@ async function handleFormSubmit(e: Event): Promise<void> {
         const result = await fetchCopilotPRsWithCache(owner, repo, fromDate, toDate, token);
         // Ignore stale responses from earlier searches
         if (requestId !== currentRequestId) return;
-        displayResults(result.prs, fromDate, toDate, result.allPRCounts);
+        await displayResults(result.prs, fromDate, toDate, result.allPRCounts);
         if (result.rateLimitInfo) {
             displayRateLimitInfo(result.rateLimitInfo, result.fromCache);
         }
@@ -531,7 +556,7 @@ async function fetchAllPRCounts(
 }
 
 // Display Functions
-function displayResults(prs: PullRequest[], fromDate: string, toDate: string, allPRCounts: AllPRCounts): void {
+async function displayResults(prs: PullRequest[], fromDate: string, toDate: string, allPRCounts: AllPRCounts): Promise<void> {
     const counts = classifyPRs(prs);
 
     // Update summary cards with ratio display
@@ -558,7 +583,7 @@ function displayResults(prs: PullRequest[], fromDate: string, toDate: string, al
     }
 
     // Display chart with date range passed from form submission
-    displayChart(prs, fromDate, toDate);
+    await displayChart(prs, fromDate, toDate);
 
     // Store all fetched PRs for filtering and reset filter state
     allFetchedPRs = sortPRsByDate(prs);
@@ -572,11 +597,14 @@ function displayResults(prs: PullRequest[], fromDate: string, toDate: string, al
     showResults();
 }
 
-function displayChart(prs: PullRequest[], fromDate: string, toDate: string): void {
+async function displayChart(prs: PullRequest[], fromDate: string, toDate: string): Promise<void> {
     const { dates, mergedData, closedData, openData } = prepareChartData(prs, fromDate, toDate);
 
     const chartContainer = document.getElementById('prChart');
     if (!chartContainer) return;
+
+    // Dynamically load Chart.js (only the bar-chart components)
+    const ChartJS = await loadChartJS();
 
     // Create canvas if it doesn't exist
     let canvas = chartContainer.querySelector('canvas');
@@ -618,7 +646,7 @@ function displayChart(prs: PullRequest[], fromDate: string, toDate: string): voi
     const textColor = isDark ? '#f1f5f9' : '#1e293b';
     const gridColor = isDark ? '#475569' : '#e2e8f0';
 
-    chartInstance = new Chart(canvas, {
+    chartInstance = new ChartJS(canvas, {
         type: 'bar',
         data: {
             labels: dates.map(date => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),

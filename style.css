@@ -56,7 +56,15 @@
 @layer components {
   /* Glass Card Effect */
   .glass-card {
-    @apply bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-white/20 dark:border-slate-800/20 shadow-xl;
+    @apply bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm border border-white/20 dark:border-slate-800/20 shadow-xl;
+  }
+
+  /* Disable blur effects for users who prefer reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .glass-card {
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
   }
 
   /* Gradient Text */
