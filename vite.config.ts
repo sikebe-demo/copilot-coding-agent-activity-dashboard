@@ -12,6 +12,11 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: './index.html'
+      },
+      output: {
+        manualChunks: {
+          chartjs: ['chart.js']
+        }
       }
     }
   },
