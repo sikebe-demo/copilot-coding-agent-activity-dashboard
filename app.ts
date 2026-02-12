@@ -27,6 +27,7 @@ import {
     generatePRItemHtml,
     generateEmptyListHtml,
     generateFilteredEmptyListHtml,
+    sanitizeUrl,
     ITEMS_PER_PAGE,
 } from './lib';
 
@@ -724,8 +725,83 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
 
     paginatedPRs.forEach((pr) => {
         const prElement = document.createElement('div');
-        prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
+        const sanitizedUrl = sanitizeUrl(pr.html_url);
+        const hasValidUrl = sanitizedUrl !== '#';
+
+        const baseClasses =
+            'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 transition-all';
+        const interactiveClasses =
+            ' hover:border-indigo-500 dark:hover:border-indigo-400 cursor-pointer hover:shadow-md';
+
+        prElement.className = hasValidUrl ? baseClasses + interactiveClasses : baseClasses;
+
+        if (hasValidUrl) {
+            prElement.setAttribute('data-url', sanitizedUrl);
+            prElement.setAttribute('role', 'link');
+            prElement.setAttribute('aria-label', `Open pull request: ${pr.title || 'Untitled'}`);
+            prElement.setAttribute('tabindex', '0');
+
+            const openPR = () => {
+                const url = prElement.getAttribute('data-url');
+                if (url) {
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                }
+            };
+
+            prElement.addEventListener('click', (e) => {
+                // Don't navigate if user clicked on the existing icon link itself
+                const target = e.target;
+                if (target instanceof Element && target.closest('a')) return;
+                openPR();
+            });
+            prElement.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    openPR();
+                }
+            });
+        } else {
+            prElement.setAttribute('aria-label', `Pull request (no link available): ${pr.title || 'Untitled'}`);
+        }
+
+        // Set PR item HTML directly on the element
         prElement.innerHTML = generatePRItemHtml(pr);
+
+        if (hasValidUrl) {
+            // Add hover color styles to the PR title only when the item is interactive
+            const titleEl = prElement.querySelector('h3');
+            if (titleEl) {
+                titleEl.classList.add('hover:text-indigo-600', 'dark:hover:text-indigo-400');
+            }
+            // Replace inner anchors with non-interactive spans to avoid nested link semantics
+            const innerLinks = prElement.querySelectorAll('a');
+            innerLinks.forEach((anchor) => {
+                const span = document.createElement('span');
+                span.className = anchor.className;
+                span.innerHTML = anchor.innerHTML;
+                anchor.replaceWith(span);
+            });
+        } else {
+            // Remove or neutralize any anchors that point to "#" so they are not focusable fake links
+            const placeholderLinks = prElement.querySelectorAll('a[href="#"]');
+            placeholderLinks.forEach((anchor) => {
+                const span = document.createElement('span');
+                // Copy only non-interactive classes so the icon/text doesn't look clickable
+                const filteredClasses = anchor.className
+                    .split(/\s+/)
+                    .filter(
+                        (cls) =>
+                            cls &&
+                            !cls.startsWith('cursor-') &&
+                            !cls.startsWith('hover:') &&
+                            !cls.startsWith('focus:')
+                    )
+                    .join(' ');
+                span.className = filteredClasses;
+                span.innerHTML = anchor.innerHTML;
+                anchor.replaceWith(span);
+            });
+        }
         prList.appendChild(prElement);
     });
 

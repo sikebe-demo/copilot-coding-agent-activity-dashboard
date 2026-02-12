@@ -148,6 +148,206 @@ test.describe('PR List', () => {
 });
 
 // ============================================================================
+// PR Item Interaction Tests
+// ============================================================================
+
+test.describe('PR Item Click and Keyboard Interaction', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+  });
+
+  test('should have correct data-url and aria-label on PR items', async ({ page }) => {
+    const prs = [createPR({
+      number: 42,
+      title: 'Fix login bug',
+      state: 'open',
+      html_url: 'https://github.com/test/repo/pull/42'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    const prItem = page.locator('#prList [role="link"]').first();
+    await expect(prItem).toHaveAttribute('data-url', 'https://github.com/test/repo/pull/42');
+    await expect(prItem).toHaveAttribute('aria-label', 'Open pull request: Fix login bug');
+    await expect(prItem).toHaveAttribute('tabindex', '0');
+  });
+
+  test('should open PR in new tab when clicking a PR item', async ({ page }) => {
+    const prs = [createPR({
+      number: 10,
+      title: 'Add feature',
+      state: 'open',
+      html_url: 'https://github.com/test/repo/pull/10'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    const prItem = page.locator('#prList [role="link"]').first();
+
+    // Intercept window.open to verify it's called with the correct URL
+    const openCalls = [];
+    await page.exposeFunction('__captureOpen', (url, target, features) => {
+      openCalls.push({ url, target, features });
+    });
+    await page.evaluate(() => {
+      window.open = (url, target, features) => {
+        window.__captureOpen(url, target, features);
+        return null;
+      };
+    });
+
+    await prItem.click();
+
+    await expect.poll(() => openCalls.length).toBe(1);
+    expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/10');
+    expect(openCalls[0].target).toBe('_blank');
+    expect(openCalls[0].features).toBe('noopener,noreferrer');
+  });
+
+  test('should replace inner anchors with spans to avoid nested link semantics', async ({ page }) => {
+    const prs = [createPR({
+      number: 10,
+      title: 'Add feature',
+      state: 'open',
+      html_url: 'https://github.com/test/repo/pull/10'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Verify that inside a role="link" container, there are no nested <a> elements
+    const innerAnchors = page.locator('#prList [role="link"] a');
+    await expect(innerAnchors).toHaveCount(0);
+
+    // Verify that the icon is rendered as a <span> instead
+    const iconSpan = page.locator('#prList [role="link"] span svg').first();
+    await expect(iconSpan).toBeVisible();
+  });
+
+  test('should open PR when pressing Enter on a focused PR item', async ({ page }) => {
+    const prs = [createPR({
+      number: 20,
+      title: 'Keyboard nav test',
+      state: 'closed',
+      merged_at: getDaysAgoISO(1),
+      html_url: 'https://github.com/test/repo/pull/20'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    const prItem = page.locator('#prList [role="link"]').first();
+
+    const openCalls = [];
+    await page.exposeFunction('__captureOpenEnter', (url, target, features) => {
+      openCalls.push({ url, target, features });
+    });
+    await page.evaluate(() => {
+      window.open = (url, target, features) => {
+        window.__captureOpenEnter(url, target, features);
+        return null;
+      };
+    });
+
+    await prItem.focus();
+    await prItem.press('Enter');
+
+    await expect.poll(() => openCalls.length).toBe(1);
+    expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/20');
+  });
+
+  test('should not open PR when pressing Space on a focused PR item (role="link" uses Enter only)', async ({ page }) => {
+    const prs = [createPR({
+      number: 30,
+      title: 'Space key test',
+      state: 'open',
+      html_url: 'https://github.com/test/repo/pull/30'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    const prItem = page.locator('#prList [role="link"]').first();
+
+    const openCalls = [];
+    await page.exposeFunction('__captureOpenSpace', (url, target, features) => {
+      openCalls.push({ url, target, features });
+    });
+    await page.evaluate(() => {
+      window.open = (url, target, features) => {
+        window.__captureOpenSpace(url, target, features);
+        return null;
+      };
+    });
+
+    await prItem.focus();
+    await prItem.press(' ');
+
+    // Space should NOT activate a role="link" element per ARIA spec
+    await page.waitForTimeout(300);
+    expect(openCalls.length).toBe(0);
+  });
+
+  test('should render PR item without link semantics when html_url is null', async ({ page }) => {
+    const prs = [createPR({
+      number: 40,
+      title: 'No URL PR',
+      state: 'open',
+      html_url: null
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // PR item should NOT have role="link" when url is invalid
+    const linkItems = page.locator('#prList [role="link"]');
+    await expect(linkItems).toHaveCount(0);
+
+    // PR item should still be rendered
+    const prItems = page.locator('#prList > div');
+    await expect(prItems).toHaveCount(1);
+
+    // Should have aria-label indicating no link is available
+    const prItem = prItems.first();
+    await expect(prItem).toHaveAttribute('aria-label', 'Pull request (no link available): No URL PR');
+
+    // Should NOT have tabindex (not focusable as a link)
+    const tabindex = await prItem.getAttribute('tabindex');
+    expect(tabindex).toBeNull();
+
+    // Should NOT be clickable (no window.open call)
+    const openCalls = [];
+    await page.exposeFunction('__captureOpenNull', (url, target, features) => {
+      openCalls.push({ url, target, features });
+    });
+    await page.evaluate(() => {
+      window.open = (url, target, features) => {
+        window.__captureOpenNull(url, target, features);
+        return null;
+      };
+    });
+
+    await prItem.click();
+    await page.waitForTimeout(300);
+    expect(openCalls.length).toBe(0);
+
+    // Placeholder anchors with href="#" should be replaced with non-interactive spans
+    const placeholderAnchors = page.locator('#prList > div a[href="#"]');
+    await expect(placeholderAnchors).toHaveCount(0);
+  });
+});
+
+// ============================================================================
 // Chart Tests
 // ============================================================================
 
