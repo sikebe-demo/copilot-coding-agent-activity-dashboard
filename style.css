@@ -159,7 +159,7 @@
   @apply ring-offset-slate-900;
 }
 
-/* Merge Rate Bar - 初期幅0%（JavaScriptで動的に更新） */
+/* Merge Rate Bar - initial width 0% (dynamically updated by JavaScript) */
 #mergeRateBar {
   width: 0%;
 }

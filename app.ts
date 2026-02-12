@@ -576,7 +576,7 @@ function displayChart(prs: PullRequest[], fromDate: string, toDate: string): voi
     chartInstance = new Chart(canvas, {
         type: 'bar',
         data: {
-            labels: dates.map(date => new Date(date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })),
+            labels: dates.map(date => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
             datasets: [
                 {
                     label: 'Merged',
@@ -828,7 +828,7 @@ function displayPagination(totalPages: number, totalItems: number): void {
     // Page info
     const pageInfo = document.createElement('div');
     pageInfo.className = 'text-sm text-slate-600 dark:text-slate-400';
-    pageInfo.textContent = `${startItem}-${endItem} / ${totalItems}件`;
+    pageInfo.textContent = `${startItem}-${endItem} of ${totalItems}`;
 
     // Navigation buttons
     const navContainer = document.createElement('div');
