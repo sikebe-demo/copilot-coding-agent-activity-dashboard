@@ -281,7 +281,7 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
     expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/20');
   });
 
-  test('should open PR when pressing Space on a focused PR item', async ({ page }) => {
+  test('should not open PR when pressing Space on a focused PR item (role="link" uses Enter only)', async ({ page }) => {
     const prs = [createPR({
       number: 30,
       title: 'Space key test',
@@ -309,8 +309,9 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
     await prItem.focus();
     await prItem.press(' ');
 
-    await expect.poll(() => openCalls.length).toBe(1);
-    expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/30');
+    // Space should NOT activate a role="link" element per ARIA spec
+    await page.waitForTimeout(300);
+    expect(openCalls.length).toBe(0);
   });
 });
 

@@ -755,7 +755,7 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
                 openPR();
             });
             prElement.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
+                if (e.key === 'Enter') {
                     e.preventDefault();
                     openPR();
                 }
@@ -768,12 +768,29 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
         const prItemContainer = document.createElement('div');
         prItemContainer.innerHTML = generatePRItemHtml(pr);
 
-        if (!hasValidUrl) {
+        if (hasValidUrl) {
+            // Set inner anchor to tabindex="-1" so only the outer container is focusable
+            const innerLinks = prItemContainer.querySelectorAll('a');
+            innerLinks.forEach((anchor) => {
+                anchor.setAttribute('tabindex', '-1');
+            });
+        } else {
             // Remove or neutralize any anchors that point to "#" so they are not focusable fake links
             const placeholderLinks = prItemContainer.querySelectorAll('a[href="#"]');
             placeholderLinks.forEach((anchor) => {
                 const span = document.createElement('span');
-                span.className = anchor.className;
+                // Copy only non-interactive classes so the icon/text doesn't look clickable
+                const filteredClasses = anchor.className
+                    .split(/\s+/)
+                    .filter(
+                        (cls) =>
+                            cls &&
+                            !cls.startsWith('cursor-') &&
+                            !cls.startsWith('hover:') &&
+                            !cls.startsWith('focus:')
+                    )
+                    .join(' ');
+                span.className = filteredClasses;
                 span.innerHTML = anchor.innerHTML;
                 anchor.replaceWith(span);
             });
