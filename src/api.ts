@@ -211,6 +211,10 @@ async function fetchAllPRCounts(
             const result = results[i];
 
             if (result.status === 'rejected') {
+                // If the request was aborted, rethrow to prevent caching incomplete data
+                if (result.reason instanceof DOMException && result.reason.name === 'AbortError') {
+                    throw result.reason;
+                }
                 console.warn(`Failed to fetch ${queries[i].key} PR count:`, result.reason);
                 continue;
             }
