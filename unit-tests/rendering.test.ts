@@ -5,8 +5,14 @@ import {
     generateEmptyListHtml,
     generateFilteredEmptyListHtml,
     PR_STATUS_CONFIG,
+    CHART_COLORS,
+    getChartTheme,
+    generateRateLimitHtml,
+    getAllFilterColorClasses,
+    FILTER_STYLE_MAP,
+    FILTER_INACTIVE_STYLE,
 } from '../lib';
-import type { PullRequest } from '../lib';
+import type { PullRequest, RateLimitInfo } from '../lib';
 
 function createTestPR(overrides: Partial<PullRequest> = {}): PullRequest {
     return {
@@ -213,5 +219,191 @@ describe('PR_STATUS_CONFIG', () => {
 
     it("open config should have text 'Open'", () => {
         expect(PR_STATUS_CONFIG.open.text).toBe('Open');
+    });
+});
+
+// ============================================================================
+// CHART_COLORS
+// ============================================================================
+
+describe('CHART_COLORS', () => {
+    it('should have merged, closed, and open keys', () => {
+        expect(CHART_COLORS).toHaveProperty('merged');
+        expect(CHART_COLORS).toHaveProperty('closed');
+        expect(CHART_COLORS).toHaveProperty('open');
+    });
+
+    it('should have backgroundColor and borderColor for each status', () => {
+        for (const status of ['merged', 'closed', 'open'] as const) {
+            expect(CHART_COLORS[status]).toHaveProperty('backgroundColor');
+            expect(CHART_COLORS[status]).toHaveProperty('borderColor');
+            expect(typeof CHART_COLORS[status].backgroundColor).toBe('string');
+            expect(typeof CHART_COLORS[status].borderColor).toBe('string');
+        }
+    });
+
+    it('should use rgba format for colors', () => {
+        expect(CHART_COLORS.merged.backgroundColor).toMatch(/^rgba\(/);
+        expect(CHART_COLORS.merged.borderColor).toMatch(/^rgba\(/);
+    });
+});
+
+// ============================================================================
+// getChartTheme
+// ============================================================================
+
+describe('getChartTheme', () => {
+    it('should return dark theme colors when isDark is true', () => {
+        const theme = getChartTheme(true);
+        expect(theme.textColor).toBe('#f1f5f9');
+        expect(theme.gridColor).toBe('#475569');
+        expect(theme.tooltipBg).toContain('15, 23, 42');
+        expect(theme.tooltipBorder).toBe('#334155');
+    });
+
+    it('should return light theme colors when isDark is false', () => {
+        const theme = getChartTheme(false);
+        expect(theme.textColor).toBe('#1e293b');
+        expect(theme.gridColor).toBe('#e2e8f0');
+        expect(theme.tooltipBg).toContain('255, 255, 255');
+        expect(theme.tooltipBorder).toBe('#e2e8f0');
+    });
+
+    it('should return all four properties', () => {
+        const theme = getChartTheme(true);
+        expect(Object.keys(theme)).toEqual(['textColor', 'gridColor', 'tooltipBg', 'tooltipBorder']);
+    });
+});
+
+// ============================================================================
+// generateRateLimitHtml
+// ============================================================================
+
+describe('generateRateLimitHtml', () => {
+    const baseInfo: RateLimitInfo = {
+        limit: 30,
+        remaining: 25,
+        reset: Math.floor(Date.now() / 1000) + 60,
+        used: 5,
+    };
+
+    it('should show remaining and limit values', () => {
+        const html = generateRateLimitHtml({ info: baseInfo, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('25');
+        expect(html).toContain('/ 30 remaining');
+    });
+
+    it('should show Authenticated badge when limit > 10', () => {
+        const html = generateRateLimitHtml({ info: baseInfo, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('Authenticated');
+    });
+
+    it('should show Unauthenticated badge when limit <= 10', () => {
+        const info = { ...baseInfo, limit: 10 };
+        const html = generateRateLimitHtml({ info, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('Unauthenticated');
+    });
+
+    it('should show Cached indicator when fromCache is true', () => {
+        const html = generateRateLimitHtml({ info: baseInfo, fromCache: true, resetCountdown: '1:00' });
+        expect(html).toContain('Cached');
+        expect(html).toContain('Data loaded from cache');
+    });
+
+    it('should not show Cached indicator when fromCache is false', () => {
+        const html = generateRateLimitHtml({ info: baseInfo, fromCache: false, resetCountdown: '1:00' });
+        expect(html).not.toContain('Cached');
+        expect(html).toContain(`Used ${baseInfo.used} requests`);
+    });
+
+    it('should show Good status when remaining > 50%', () => {
+        const html = generateRateLimitHtml({ info: baseInfo, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('Good');
+    });
+
+    it('should show Warning status when remaining is between 20% and 50%', () => {
+        const info = { ...baseInfo, remaining: 8, used: 22 };
+        const html = generateRateLimitHtml({ info, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('Warning');
+    });
+
+    it('should show Low status when remaining <= 20%', () => {
+        const info = { ...baseInfo, remaining: 2, used: 28 };
+        const html = generateRateLimitHtml({ info, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('Low');
+    });
+
+    it('should highlight remaining count in red when low', () => {
+        const info = { ...baseInfo, remaining: 2, used: 28 };
+        const html = generateRateLimitHtml({ info, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('text-red-600 dark:text-red-400');
+    });
+
+    it('should include reset countdown value', () => {
+        const html = generateRateLimitHtml({ info: baseInfo, fromCache: false, resetCountdown: '2:30' });
+        expect(html).toContain('2:30');
+    });
+
+    it('should include progress bar with correct width', () => {
+        const info = { ...baseInfo, remaining: 15, used: 15 };
+        const html = generateRateLimitHtml({ info, fromCache: false, resetCountdown: '1:00' });
+        // usagePercent = 50%, so progress bar width = 50%
+        expect(html).toContain('width: 50%');
+    });
+
+    it('should show green progress bar when remaining > 50%', () => {
+        const html = generateRateLimitHtml({ info: baseInfo, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('bg-green-500');
+    });
+
+    it('should show PAT link for unauthenticated users', () => {
+        const info = { ...baseInfo, limit: 10 };
+        const html = generateRateLimitHtml({ info, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('href="https://docs.github.com/en/rest/search/search#rate-limit"');
+    });
+});
+
+// ============================================================================
+// getAllFilterColorClasses
+// ============================================================================
+
+describe('getAllFilterColorClasses', () => {
+    it('should return an array of strings', () => {
+        const classes = getAllFilterColorClasses();
+        expect(Array.isArray(classes)).toBe(true);
+        expect(classes.length).toBeGreaterThan(0);
+        classes.forEach(c => expect(typeof c).toBe('string'));
+    });
+
+    it('should include classes from FILTER_INACTIVE_STYLE', () => {
+        const classes = getAllFilterColorClasses();
+        const inactiveClasses = FILTER_INACTIVE_STYLE.split(' ');
+        for (const c of inactiveClasses) {
+            expect(classes).toContain(c);
+        }
+    });
+
+    it('should include active classes from all filter types', () => {
+        const classes = getAllFilterColorClasses();
+        for (const config of Object.values(FILTER_STYLE_MAP)) {
+            for (const c of config.active.split(' ')) {
+                expect(classes).toContain(c);
+            }
+        }
+    });
+
+    it('should include hover classes from all filter types', () => {
+        const classes = getAllFilterColorClasses();
+        for (const config of Object.values(FILTER_STYLE_MAP)) {
+            for (const c of config.hover.split(' ')) {
+                expect(classes).toContain(c);
+            }
+        }
+    });
+
+    it('should not have duplicates', () => {
+        const classes = getAllFilterColorClasses();
+        const uniqueClasses = new Set(classes);
+        expect(classes.length).toBe(uniqueClasses.size);
     });
 });

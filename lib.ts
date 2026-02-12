@@ -754,3 +754,185 @@ export function generateFilteredEmptyListHtml(): string {
             </div>
         `;
 }
+
+// ============================================================================
+// Chart Constants
+// ============================================================================
+
+export const CHART_COLORS = {
+    merged: {
+        backgroundColor: 'rgba(16, 185, 129, 0.8)',
+        borderColor: 'rgba(16, 185, 129, 1)',
+    },
+    closed: {
+        backgroundColor: 'rgba(239, 68, 68, 0.8)',
+        borderColor: 'rgba(239, 68, 68, 1)',
+    },
+    open: {
+        backgroundColor: 'rgba(59, 130, 246, 0.8)',
+        borderColor: 'rgba(59, 130, 246, 1)',
+    },
+} as const;
+
+export interface ChartTheme {
+    textColor: string;
+    gridColor: string;
+    tooltipBg: string;
+    tooltipBorder: string;
+}
+
+export function getChartTheme(isDark: boolean): ChartTheme {
+    return {
+        textColor: isDark ? '#f1f5f9' : '#1e293b',
+        gridColor: isDark ? '#475569' : '#e2e8f0',
+        tooltipBg: isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+        tooltipBorder: isDark ? '#334155' : '#e2e8f0',
+    };
+}
+
+// ============================================================================
+// Filter Button Style Constants
+// ============================================================================
+
+export interface FilterStyleConfig {
+    active: string;
+    hover: string;
+}
+
+export const FILTER_STYLE_MAP: Record<PRFilterStatus, FilterStyleConfig> = {
+    all: {
+        active: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-400 dark:border-indigo-500',
+        hover: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 dark:hover:border-indigo-500',
+    },
+    merged: {
+        active: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-400 dark:border-green-500',
+        hover: 'hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-700 dark:hover:text-green-300 hover:border-green-300 dark:hover:border-green-600',
+    },
+    closed: {
+        active: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-400 dark:border-red-500',
+        hover: 'hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-700 dark:hover:text-red-300 hover:border-red-300 dark:hover:border-red-600',
+    },
+    open: {
+        active: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-500',
+        hover: 'hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-300 hover:border-blue-300 dark:hover:border-blue-600',
+    },
+};
+
+export const FILTER_INACTIVE_STYLE = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
+
+/**
+ * Derives the complete set of color-related classes from the style map + inactive style.
+ * Used to remove all color classes before applying the correct ones.
+ */
+export function getAllFilterColorClasses(): string[] {
+    const classes = new Set<string>();
+    // Collect from inactive style
+    FILTER_INACTIVE_STYLE.split(' ').forEach(c => classes.add(c));
+    // Collect from all active, hover styles
+    for (const config of Object.values(FILTER_STYLE_MAP)) {
+        config.active.split(' ').forEach(c => classes.add(c));
+        config.hover.split(' ').forEach(c => classes.add(c));
+    }
+    return [...classes];
+}
+
+// ============================================================================
+// Rate Limit HTML Generation
+// ============================================================================
+
+export interface RateLimitDisplayParams {
+    info: RateLimitInfo;
+    fromCache: boolean;
+    resetCountdown: string;
+}
+
+/**
+ * Generates HTML for the rate limit info panel.
+ * Pure function with no DOM dependencies.
+ */
+export function generateRateLimitHtml(params: RateLimitDisplayParams): string {
+    const { info, fromCache, resetCountdown } = params;
+    const usagePercent = Math.round((info.used / info.limit) * 100);
+    const { statusText, isAuthenticated } = getRateLimitStatus(info.remaining, info.limit);
+
+    const authStatusBadge = isAuthenticated
+        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Authenticated</span>'
+        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">Unauthenticated</span>';
+
+    let statusClass: string;
+    let statusBgClass: string;
+    if (statusText === 'Good') {
+        statusClass = 'text-green-600 dark:text-green-400';
+        statusBgClass = 'bg-green-100 dark:bg-green-900/30';
+    } else if (statusText === 'Warning') {
+        statusClass = 'text-yellow-600 dark:text-yellow-400';
+        statusBgClass = 'bg-yellow-100 dark:bg-yellow-900/30';
+    } else {
+        statusClass = 'text-red-600 dark:text-red-400';
+        statusBgClass = 'bg-red-100 dark:bg-red-900/30';
+    }
+
+    const cacheIndicator = fromCache
+        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">Cached</span>'
+        : '';
+
+    const progressBarColor = info.remaining > info.limit * 0.5
+        ? 'bg-green-500'
+        : info.remaining > info.limit * 0.2
+            ? 'bg-yellow-500'
+            : 'bg-red-500';
+
+    const remainingHighlight = info.remaining <= info.limit * 0.2
+        ? 'text-red-600 dark:text-red-400'
+        : '';
+
+    const infoText = fromCache
+        ? '<p>📦 Data loaded from cache (5 min TTL). No API call made.</p>'
+        : `<p>🔄 Used ${info.used} requests this minute</p>`;
+
+    const authTip = isAuthenticated
+        ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
+        : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">PAT</a> to increase to 30 requests/min.';
+
+    return `
+        <div class="space-y-3">
+            <!-- Header -->
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200">GitHub Search API</span>
+                    ${authStatusBadge}
+                    ${cacheIndicator}
+                </div>
+                <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium ${statusClass} ${statusBgClass}">${statusText}</span>
+            </div>
+
+            <!-- Progress Section -->
+            <div class="space-y-2">
+                <div class="flex justify-between items-baseline">
+                    <div class="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        <span class="${remainingHighlight}">${info.remaining}</span>
+                        <span class="text-sm font-normal text-slate-500 dark:text-slate-400">/ ${info.limit} remaining</span>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-slate-500 dark:text-slate-400">Resets in</div>
+                        <div id="rateLimitCountdown" class="text-sm font-mono font-medium text-slate-700 dark:text-slate-200">${resetCountdown}</div>
+                    </div>
+                </div>
+                <div class="relative h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div class="absolute left-0 top-0 h-full rounded-full transition-all duration-300 ${progressBarColor}" style="width: ${100 - usagePercent}%"></div>
+                </div>
+            </div>
+
+            <!-- Info Section -->
+            <div class="pt-2 border-t border-slate-200 dark:border-slate-700">
+                <div class="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+                    ${infoText}
+                    <p class="flex items-start gap-1">
+                        <span class="shrink-0">💡</span>
+                        <span>${authTip}</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    `;
+}

@@ -14,7 +14,6 @@ import {
     clearOldCache,
     extractRateLimitInfo,
     formatCountdown,
-    getRateLimitStatus,
     getPageNumbersToShow,
     classifyPRs,
     prepareChartData,
@@ -31,6 +30,12 @@ import {
     generateFilteredEmptyListHtml,
     sanitizeUrl,
     ITEMS_PER_PAGE,
+    CHART_COLORS,
+    getChartTheme,
+    FILTER_STYLE_MAP,
+    FILTER_INACTIVE_STYLE,
+    getAllFilterColorClasses,
+    generateRateLimitHtml,
 } from './lib';
 
 import type {
@@ -68,6 +73,97 @@ const state: AppState = {
     currentAbortController: null,
 };
 
+// Cached DOM element references (populated once at DOMContentLoaded)
+interface DOMElements {
+    searchForm: HTMLFormElement | null;
+    repoInput: HTMLInputElement | null;
+    fromDate: HTMLInputElement | null;
+    toDate: HTMLInputElement | null;
+    tokenInput: HTMLInputElement | null;
+    loading: HTMLElement | null;
+    error: HTMLElement | null;
+    errorMessage: HTMLElement | null;
+    results: HTMLElement | null;
+    totalPRs: HTMLElement | null;
+    mergedPRs: HTMLElement | null;
+    closedPRs: HTMLElement | null;
+    openPRs: HTMLElement | null;
+    mergeRateValue: HTMLElement | null;
+    mergeRateText: HTMLElement | null;
+    mergeRateBar: HTMLElement | null;
+    prChart: HTMLElement | null;
+    prList: HTMLElement | null;
+    prPagination: HTMLElement | null;
+    prSearchInput: HTMLInputElement | null;
+    rateLimitInfo: HTMLElement | null;
+    themeToggle: HTMLElement | null;
+    loadingProgress: HTMLElement | null;
+    loadingProgressBar: HTMLElement | null;
+    loadingProgressText: HTMLElement | null;
+    loadingTitle: HTMLElement | null;
+    loadingMessage: HTMLElement | null;
+}
+
+const dom: DOMElements = {
+    searchForm: null,
+    repoInput: null,
+    fromDate: null,
+    toDate: null,
+    tokenInput: null,
+    loading: null,
+    error: null,
+    errorMessage: null,
+    results: null,
+    totalPRs: null,
+    mergedPRs: null,
+    closedPRs: null,
+    openPRs: null,
+    mergeRateValue: null,
+    mergeRateText: null,
+    mergeRateBar: null,
+    prChart: null,
+    prList: null,
+    prPagination: null,
+    prSearchInput: null,
+    rateLimitInfo: null,
+    themeToggle: null,
+    loadingProgress: null,
+    loadingProgressBar: null,
+    loadingProgressText: null,
+    loadingTitle: null,
+    loadingMessage: null,
+};
+
+function cacheDOMElements(): void {
+    dom.searchForm = document.getElementById('searchForm') as HTMLFormElement | null;
+    dom.repoInput = document.getElementById('repoInput') as HTMLInputElement | null;
+    dom.fromDate = document.getElementById('fromDate') as HTMLInputElement | null;
+    dom.toDate = document.getElementById('toDate') as HTMLInputElement | null;
+    dom.tokenInput = document.getElementById('tokenInput') as HTMLInputElement | null;
+    dom.loading = document.getElementById('loading');
+    dom.error = document.getElementById('error');
+    dom.errorMessage = document.getElementById('errorMessage');
+    dom.results = document.getElementById('results');
+    dom.totalPRs = document.getElementById('totalPRs');
+    dom.mergedPRs = document.getElementById('mergedPRs');
+    dom.closedPRs = document.getElementById('closedPRs');
+    dom.openPRs = document.getElementById('openPRs');
+    dom.mergeRateValue = document.getElementById('mergeRateValue');
+    dom.mergeRateText = document.getElementById('mergeRateText');
+    dom.mergeRateBar = document.getElementById('mergeRateBar');
+    dom.prChart = document.getElementById('prChart');
+    dom.prList = document.getElementById('prList');
+    dom.prPagination = document.getElementById('prPagination');
+    dom.prSearchInput = document.getElementById('prSearchInput') as HTMLInputElement | null;
+    dom.rateLimitInfo = document.getElementById('rateLimitInfo');
+    dom.themeToggle = document.getElementById('themeToggle');
+    dom.loadingProgress = document.getElementById('loadingProgress');
+    dom.loadingProgressBar = document.getElementById('loadingProgressBar');
+    dom.loadingProgressText = document.getElementById('loadingProgressText');
+    dom.loadingTitle = document.getElementById('loadingTitle');
+    dom.loadingMessage = document.getElementById('loadingMessage');
+}
+
 /**
  * Lazily load Chart.js with only the components needed for bar charts.
  * This enables code splitting — Chart.js (~180 KB) is downloaded only when
@@ -95,6 +191,7 @@ const DEFAULT_LOADING_MESSAGE = 'Loading PR information from GitHub API';
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
+    cacheDOMElements();
     initializeTheme();
     initializeForm();
     initializeFilters();
@@ -103,7 +200,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Theme Management
 function initializeTheme(): void {
-    const themeToggle = document.getElementById('themeToggle');
     const savedTheme = localStorage.getItem('theme') || 'light';
 
     if (savedTheme === 'dark') {
@@ -114,7 +210,7 @@ function initializeTheme(): void {
     // Set initial aria-label reflecting current state
     updateThemeToggleLabel();
 
-    themeToggle?.addEventListener('click', toggleTheme);
+    dom.themeToggle?.addEventListener('click', toggleTheme);
 }
 
 function toggleTheme(): void {
@@ -141,10 +237,9 @@ function toggleTheme(): void {
 }
 
 function updateThemeToggleLabel(): void {
-    const themeToggle = document.getElementById('themeToggle');
-    if (!themeToggle) return;
+    if (!dom.themeToggle) return;
     const isDark = document.documentElement.classList.contains('dark');
-    themeToggle.setAttribute(
+    dom.themeToggle.setAttribute(
         'aria-label',
         isDark
             ? 'Switch to light mode (currently dark mode)'
@@ -158,29 +253,25 @@ function setDefaultDates(): void {
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - 30);
 
-    const toInput = document.getElementById('toDate') as HTMLInputElement | null;
-    const fromInput = document.getElementById('fromDate') as HTMLInputElement | null;
-
-    if (toInput) toInput.valueAsDate = toDate;
-    if (fromInput) fromInput.valueAsDate = fromDate;
+    if (dom.toDate) dom.toDate.valueAsDate = toDate;
+    if (dom.fromDate) dom.fromDate.valueAsDate = fromDate;
 }
 
 // Form initialization
 function initializeForm(): void {
-    const form = document.getElementById('searchForm');
-    form?.addEventListener('submit', handleFormSubmit);
+    dom.searchForm?.addEventListener('submit', handleFormSubmit);
     initializePresetRepos();
 }
 
 // Preset repository buttons
 function initializePresetRepos(): void {
     const buttons = document.querySelectorAll<HTMLButtonElement>('.preset-repo-btn');
-    const repoInput = document.getElementById('repoInput') as HTMLInputElement | null;
 
-    if (!repoInput) {
+    if (!dom.repoInput) {
         return;
     }
 
+    const repoInput = dom.repoInput;
     buttons.forEach((button) => {
         button.addEventListener('click', () => {
             const repo = button.dataset.repo;
@@ -208,12 +299,11 @@ function initializeFilters(): void {
     });
 
     // Text search input with debounce
-    const searchInput = document.getElementById('prSearchInput') as HTMLInputElement | null;
     let debounceTimer: number | null = null;
-    searchInput?.addEventListener('input', () => {
+    dom.prSearchInput?.addEventListener('input', () => {
         if (debounceTimer !== null) clearTimeout(debounceTimer);
         debounceTimer = window.setTimeout(() => {
-            state.activeSearchText = searchInput.value;
+            state.activeSearchText = dom.prSearchInput?.value ?? '';
             applyFilters();
         }, 300);
     });
@@ -226,8 +316,7 @@ function applyFilters(): void {
 
 function resetFilterUI(): void {
     // Reset search input
-    const searchInput = document.getElementById('prSearchInput') as HTMLInputElement | null;
-    if (searchInput) searchInput.value = '';
+    if (dom.prSearchInput) dom.prSearchInput.value = '';
 
     // Reset button styles
     updateFilterButtonStyles();
@@ -235,58 +324,25 @@ function resetFilterUI(): void {
 
 function updateFilterButtonStyles(): void {
     const filterButtons = document.querySelectorAll<HTMLButtonElement>('.pr-filter-btn');
-
-    // Active & inactive style maps per filter type
-    const activeStyles: Record<PRFilterStatus, string> = {
-        all: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-400 dark:border-indigo-500',
-        merged: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-400 dark:border-green-500',
-        closed: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-400 dark:border-red-500',
-        open: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-500',
-    };
-    const inactiveStyle = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
-
-    // Classes that should be removed when switching between states
-    const allColorClasses = [
-        'bg-indigo-100', 'dark:bg-indigo-900/30', 'text-indigo-700', 'dark:text-indigo-300', 'border-indigo-400', 'dark:border-indigo-500',
-        'bg-green-100', 'dark:bg-green-900/30', 'text-green-700', 'dark:text-green-300', 'border-green-400', 'dark:border-green-500',
-        'bg-red-100', 'dark:bg-red-900/30', 'text-red-700', 'dark:text-red-300', 'border-red-400', 'dark:border-red-500',
-        'bg-blue-100', 'dark:bg-blue-900/30', 'text-blue-700', 'dark:text-blue-300', 'border-blue-400', 'dark:border-blue-500',
-        'bg-slate-100', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-400', 'border-slate-200', 'dark:border-slate-700',
-    ];
-
-    // Hover classes that should be removed when a button is active
-    const allHoverClasses = [
-        'hover:bg-indigo-50', 'dark:hover:bg-indigo-900/20', 'hover:text-indigo-700', 'dark:hover:text-indigo-300', 'hover:border-indigo-300', 'dark:hover:border-indigo-500',
-        'hover:bg-green-50', 'dark:hover:bg-green-900/20', 'hover:text-green-700', 'dark:hover:text-green-300', 'hover:border-green-300', 'dark:hover:border-green-600',
-        'hover:bg-red-50', 'dark:hover:bg-red-900/20', 'hover:text-red-700', 'dark:hover:text-red-300', 'hover:border-red-300', 'dark:hover:border-red-600',
-        'hover:bg-blue-50', 'dark:hover:bg-blue-900/20', 'hover:text-blue-700', 'dark:hover:text-blue-300', 'hover:border-blue-300', 'dark:hover:border-blue-600',
-    ];
-
-    // Hover classes for inactive buttons per filter type
-    const hoverStyles: Record<string, string> = {
-        all: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 dark:hover:border-indigo-500',
-        merged: 'hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-700 dark:hover:text-green-300 hover:border-green-300 dark:hover:border-green-600',
-        closed: 'hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-700 dark:hover:text-red-300 hover:border-red-300 dark:hover:border-red-600',
-        open: 'hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-300 hover:border-blue-300 dark:hover:border-blue-600',
-    };
+    const allClasses = getAllFilterColorClasses();
 
     filterButtons.forEach((button) => {
         const filter = button.dataset.filter ?? '';
         const isActive = filter === state.activeStatusFilter;
+        const styleConfig = FILTER_STYLE_MAP[filter as PRFilterStatus];
 
-        // Remove all color-related classes and hover classes
-        button.classList.remove(...allColorClasses, ...allHoverClasses);
+        // Remove all color-related classes
+        button.classList.remove(...allClasses);
 
-        // Add appropriate classes
-        const classes = isActive ? (activeStyles[filter as PRFilterStatus] ?? inactiveStyle) : inactiveStyle;
-        button.classList.add(...classes.split(' '));
-
-        // Re-add hover classes only for inactive buttons
-        if (!isActive && hoverStyles[filter]) {
-            button.classList.add(...hoverStyles[filter].split(' '));
+        if (isActive && styleConfig) {
+            button.classList.add(...styleConfig.active.split(' '));
+        } else {
+            button.classList.add(...FILTER_INACTIVE_STYLE.split(' '));
+            if (styleConfig) {
+                button.classList.add(...styleConfig.hover.split(' '));
+            }
         }
 
-        // Set aria-pressed for accessibility
         button.setAttribute('aria-pressed', String(isActive));
     });
 }
@@ -294,15 +350,10 @@ function updateFilterButtonStyles(): void {
 async function handleFormSubmit(e: Event): Promise<void> {
     e.preventDefault();
 
-    const repoInputEl = document.getElementById('repoInput') as HTMLInputElement | null;
-    const fromDateEl = document.getElementById('fromDate') as HTMLInputElement | null;
-    const toDateEl = document.getElementById('toDate') as HTMLInputElement | null;
-    const tokenInputEl = document.getElementById('tokenInput') as HTMLInputElement | null;
-
-    const repoInput = repoInputEl?.value.trim() ?? '';
-    const fromDate = fromDateEl?.value ?? '';
-    const toDate = toDateEl?.value ?? '';
-    const token = tokenInputEl?.value.trim() ?? '';
+    const repoInput = dom.repoInput?.value.trim() ?? '';
+    const fromDate = dom.fromDate?.value ?? '';
+    const toDate = dom.toDate?.value ?? '';
+    const token = dom.tokenInput?.value.trim() ?? '';
 
     const parseResult = parseRepoInput(repoInput);
     if (typeof parseResult === 'string') {
@@ -579,26 +630,17 @@ async function displayResults(prs: PullRequest[], fromDate: string, toDate: stri
     const counts = classifyPRs(prs);
 
     // Update summary cards with ratio display
-    const totalPRsEl = document.getElementById('totalPRs');
-    const mergedPRsEl = document.getElementById('mergedPRs');
-    const closedPRsEl = document.getElementById('closedPRs');
-    const openPRsEl = document.getElementById('openPRs');
-
-    if (totalPRsEl) totalPRsEl.innerHTML = createRatioHtml(counts.total, allPRCounts.total, 'text-slate-800 dark:text-slate-100');
-    if (mergedPRsEl) mergedPRsEl.innerHTML = createRatioHtml(counts.merged, allPRCounts.merged, 'text-green-700 dark:text-green-400');
-    if (closedPRsEl) closedPRsEl.innerHTML = createRatioHtml(counts.closed, allPRCounts.closed, 'text-red-600 dark:text-red-400');
-    if (openPRsEl) openPRsEl.innerHTML = createRatioHtml(counts.open, allPRCounts.open, 'text-blue-600 dark:text-blue-400');
+    if (dom.totalPRs) dom.totalPRs.innerHTML = createRatioHtml(counts.total, allPRCounts.total, 'text-slate-800 dark:text-slate-100');
+    if (dom.mergedPRs) dom.mergedPRs.innerHTML = createRatioHtml(counts.merged, allPRCounts.merged, 'text-green-700 dark:text-green-400');
+    if (dom.closedPRs) dom.closedPRs.innerHTML = createRatioHtml(counts.closed, allPRCounts.closed, 'text-red-600 dark:text-red-400');
+    if (dom.openPRs) dom.openPRs.innerHTML = createRatioHtml(counts.open, allPRCounts.open, 'text-blue-600 dark:text-blue-400');
 
     // Update merge rate
-    const mergeRateValueEl = document.getElementById('mergeRateValue');
-    const mergeRateTextEl = document.getElementById('mergeRateText');
-    const mergeRateBarEl = document.getElementById('mergeRateBar') as HTMLElement | null;
-
-    if (mergeRateValueEl) mergeRateValueEl.textContent = `${counts.mergeRate}%`;
-    if (mergeRateTextEl) mergeRateTextEl.textContent = `${counts.mergeRate}%`;
-    if (mergeRateBarEl) {
-        mergeRateBarEl.style.width = `${counts.mergeRate}%`;
-        mergeRateBarEl.setAttribute('aria-valuenow', String(counts.mergeRate));
+    if (dom.mergeRateValue) dom.mergeRateValue.textContent = `${counts.mergeRate}%`;
+    if (dom.mergeRateText) dom.mergeRateText.textContent = `${counts.mergeRate}%`;
+    if (dom.mergeRateBar) {
+        (dom.mergeRateBar as HTMLElement).style.width = `${counts.mergeRate}%`;
+        dom.mergeRateBar.setAttribute('aria-valuenow', String(counts.mergeRate));
     }
 
     // Display chart with date range passed from form submission
@@ -619,7 +661,7 @@ async function displayResults(prs: PullRequest[], fromDate: string, toDate: stri
 async function displayChart(prs: PullRequest[], fromDate: string, toDate: string): Promise<void> {
     const { dates, mergedData, closedData, openData } = prepareChartData(prs, fromDate, toDate);
 
-    const chartContainer = document.getElementById('prChart');
+    const chartContainer = dom.prChart;
     if (!chartContainer) return;
 
     // Dynamically load Chart.js (only the bar-chart components)
@@ -662,8 +704,7 @@ async function displayChart(prs: PullRequest[], fromDate: string, toDate: string
     }
 
     const isDark = document.documentElement.classList.contains('dark');
-    const textColor = isDark ? '#f1f5f9' : '#1e293b';
-    const gridColor = isDark ? '#475569' : '#e2e8f0';
+    const theme = getChartTheme(isDark);
 
     state.chartInstance = new ChartJS(canvas, {
         type: 'bar',
@@ -673,24 +714,24 @@ async function displayChart(prs: PullRequest[], fromDate: string, toDate: string
                 {
                     label: 'Merged',
                     data: mergedData,
-                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
-                    borderColor: 'rgba(16, 185, 129, 1)',
+                    backgroundColor: CHART_COLORS.merged.backgroundColor,
+                    borderColor: CHART_COLORS.merged.borderColor,
                     borderWidth: 2,
                     borderRadius: 8
                 },
                 {
                     label: 'Closed',
                     data: closedData,
-                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                    borderColor: 'rgba(239, 68, 68, 1)',
+                    backgroundColor: CHART_COLORS.closed.backgroundColor,
+                    borderColor: CHART_COLORS.closed.borderColor,
                     borderWidth: 2,
                     borderRadius: 8
                 },
                 {
                     label: 'Open',
                     data: openData,
-                    backgroundColor: 'rgba(59, 130, 246, 0.8)',
-                    borderColor: 'rgba(59, 130, 246, 1)',
+                    backgroundColor: CHART_COLORS.open.backgroundColor,
+                    borderColor: CHART_COLORS.open.borderColor,
                     borderWidth: 2,
                     borderRadius: 8
                 }
@@ -703,7 +744,7 @@ async function displayChart(prs: PullRequest[], fromDate: string, toDate: string
                 legend: {
                     position: 'top',
                     labels: {
-                        color: textColor,
+                        color: theme.textColor,
                         padding: 20,
                         font: {
                             size: 12,
@@ -714,10 +755,10 @@ async function displayChart(prs: PullRequest[], fromDate: string, toDate: string
                     }
                 },
                 tooltip: {
-                    backgroundColor: isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
-                    titleColor: textColor,
-                    bodyColor: textColor,
-                    borderColor: isDark ? '#334155' : '#e2e8f0',
+                    backgroundColor: theme.tooltipBg,
+                    titleColor: theme.textColor,
+                    bodyColor: theme.textColor,
+                    borderColor: theme.tooltipBorder,
                     borderWidth: 1,
                     padding: 12,
                     cornerRadius: 8
@@ -727,26 +768,26 @@ async function displayChart(prs: PullRequest[], fromDate: string, toDate: string
                 x: {
                     stacked: true,
                     ticks: {
-                        color: textColor,
+                        color: theme.textColor,
                         font: {
                             size: 11
                         }
                     },
                     grid: {
-                        color: gridColor
+                        color: theme.gridColor
                     }
                 },
                 y: {
                     stacked: true,
                     ticks: {
-                        color: textColor,
+                        color: theme.textColor,
                         precision: 0,
                         font: {
                             size: 11
                         }
                     },
                     grid: {
-                        color: gridColor
+                        color: theme.gridColor
                     }
                 }
             },
@@ -762,36 +803,35 @@ function updateChartTheme(): void {
     if (!state.chartInstance) return;
 
     const isDark = document.documentElement.classList.contains('dark');
-    const textColor = isDark ? '#f1f5f9' : '#1e293b';
-    const gridColor = isDark ? '#475569' : '#e2e8f0';
+    const theme = getChartTheme(isDark);
 
     if (state.chartInstance.options.plugins?.legend?.labels) {
-        state.chartInstance.options.plugins.legend.labels.color = textColor;
+        state.chartInstance.options.plugins.legend.labels.color = theme.textColor;
     }
     if (state.chartInstance.options.plugins?.tooltip) {
-        state.chartInstance.options.plugins.tooltip.backgroundColor = isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)';
-        state.chartInstance.options.plugins.tooltip.titleColor = textColor;
-        state.chartInstance.options.plugins.tooltip.bodyColor = textColor;
-        state.chartInstance.options.plugins.tooltip.borderColor = isDark ? '#334155' : '#e2e8f0';
+        state.chartInstance.options.plugins.tooltip.backgroundColor = theme.tooltipBg;
+        state.chartInstance.options.plugins.tooltip.titleColor = theme.textColor;
+        state.chartInstance.options.plugins.tooltip.bodyColor = theme.textColor;
+        state.chartInstance.options.plugins.tooltip.borderColor = theme.tooltipBorder;
     }
     if (state.chartInstance.options.scales?.x?.ticks) {
-        state.chartInstance.options.scales.x.ticks.color = textColor;
+        state.chartInstance.options.scales.x.ticks.color = theme.textColor;
     }
     if (state.chartInstance.options.scales?.x?.grid) {
-        state.chartInstance.options.scales.x.grid.color = gridColor;
+        state.chartInstance.options.scales.x.grid.color = theme.gridColor;
     }
     if (state.chartInstance.options.scales?.y?.ticks) {
-        state.chartInstance.options.scales.y.ticks.color = textColor;
+        state.chartInstance.options.scales.y.ticks.color = theme.textColor;
     }
     if (state.chartInstance.options.scales?.y?.grid) {
-        state.chartInstance.options.scales.y.grid.color = gridColor;
+        state.chartInstance.options.scales.y.grid.color = theme.gridColor;
     }
 
     state.chartInstance.update();
 }
 
 function displayPRList(prs: PullRequest[], resetPage = true): void {
-    const prList = document.getElementById('prList');
+    const prList = dom.prList;
     if (!prList) return;
 
     // Apply filters and store globally, resetting page if needed
@@ -902,7 +942,7 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
 }
 
 function displayPagination(totalPages: number, totalItems: number): void {
-    const paginationContainer = document.getElementById('prPagination');
+    const paginationContainer = dom.prPagination;
     if (!paginationContainer) return;
 
     paginationContainer.innerHTML = '';
@@ -1009,88 +1049,67 @@ function goToPage(page: number): void {
     displayPRList(state.currentPRs, false);
 
     // Scroll to PR list section
-    const prListSection = document.getElementById('prList');
-    if (prListSection) {
-        prListSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (dom.prList) {
+        dom.prList.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 
 // UI State Management
 function showLoading(): void {
-    const loading = document.getElementById('loading');
-    if (loading) {
-        loading.classList.remove('hidden');
+    if (dom.loading) {
+        dom.loading.classList.remove('hidden');
     }
     // Reset progress display
     resetLoadingProgress();
 }
 
 function hideLoading(): void {
-    const loading = document.getElementById('loading');
-    if (loading) loading.classList.add('hidden');
+    if (dom.loading) dom.loading.classList.add('hidden');
     // Reset progress display
     resetLoadingProgress();
 }
 
 function resetLoadingProgress(): void {
-    const progressContainer = document.getElementById('loadingProgress');
-    const progressBar = document.getElementById('loadingProgressBar') as HTMLElement | null;
-    const progressText = document.getElementById('loadingProgressText');
-    const loadingTitle = document.getElementById('loadingTitle');
-    const loadingMessage = document.getElementById('loadingMessage');
-
-    if (progressContainer) progressContainer.classList.add('hidden');
-    if (progressBar) {
-        progressBar.style.width = '0%';
-        progressBar.setAttribute('aria-valuenow', '0');
+    if (dom.loadingProgress) dom.loadingProgress.classList.add('hidden');
+    if (dom.loadingProgressBar) {
+        (dom.loadingProgressBar as HTMLElement).style.width = '0%';
+        dom.loadingProgressBar.setAttribute('aria-valuenow', '0');
     }
-    if (progressText) progressText.textContent = '';
-    if (loadingTitle) loadingTitle.textContent = DEFAULT_LOADING_TITLE;
-    if (loadingMessage) loadingMessage.textContent = DEFAULT_LOADING_MESSAGE;
+    if (dom.loadingProgressText) dom.loadingProgressText.textContent = '';
+    if (dom.loadingTitle) dom.loadingTitle.textContent = DEFAULT_LOADING_TITLE;
+    if (dom.loadingMessage) dom.loadingMessage.textContent = DEFAULT_LOADING_MESSAGE;
 }
 
 function updateLoadingProgress(current: number, total: number, message: string): void {
-    const progressContainer = document.getElementById('loadingProgress');
-    const progressBar = document.getElementById('loadingProgressBar') as HTMLElement | null;
-    const progressText = document.getElementById('loadingProgressText');
-    const loadingMessage = document.getElementById('loadingMessage');
-
-    if (progressContainer) progressContainer.classList.remove('hidden');
-    if (progressBar && total > 0) {
+    if (dom.loadingProgress) dom.loadingProgress.classList.remove('hidden');
+    if (dom.loadingProgressBar && total > 0) {
         const percent = Math.min(Math.round((current / total) * 100), 100);
-        progressBar.style.width = `${percent}%`;
-        progressBar.setAttribute('aria-valuenow', String(percent));
+        (dom.loadingProgressBar as HTMLElement).style.width = `${percent}%`;
+        dom.loadingProgressBar.setAttribute('aria-valuenow', String(percent));
     }
-    if (progressText) progressText.textContent = `${current} / ${total}`;
-    if (loadingMessage) loadingMessage.textContent = message;
+    if (dom.loadingProgressText) dom.loadingProgressText.textContent = `${current} / ${total}`;
+    if (dom.loadingMessage) dom.loadingMessage.textContent = message;
 }
 
 function updateLoadingPhase(phase: string, message: string): void {
-    const loadingTitle = document.getElementById('loadingTitle');
-    const loadingMessage = document.getElementById('loadingMessage');
-
-    if (loadingTitle) loadingTitle.textContent = phase;
-    if (loadingMessage) loadingMessage.textContent = message;
+    if (dom.loadingTitle) dom.loadingTitle.textContent = phase;
+    if (dom.loadingMessage) dom.loadingMessage.textContent = message;
 }
 
 function showError(message: string): void {
-    const errorEl = document.getElementById('error');
-    const errorMessage = document.getElementById('errorMessage');
-    if (errorEl && errorMessage) {
-        errorMessage.textContent = message;
-        errorEl.classList.remove('hidden');
+    if (dom.error && dom.errorMessage) {
+        dom.errorMessage.textContent = message;
+        dom.error.classList.remove('hidden');
     }
 }
 
 function hideError(): void {
-    const errorEl = document.getElementById('error');
-    if (errorEl) errorEl.classList.add('hidden');
+    if (dom.error) dom.error.classList.add('hidden');
 }
 
 function showResults(): void {
-    const results = document.getElementById('results');
-    if (results) {
-        results.classList.remove('hidden');
+    if (dom.results) {
+        dom.results.classList.remove('hidden');
     }
 
     // Announce results to screen readers
@@ -1116,8 +1135,7 @@ function announceToScreenReader(message: string): void {
 }
 
 function hideResults(): void {
-    const results = document.getElementById('results');
-    if (results) results.classList.add('hidden');
+    if (dom.results) dom.results.classList.add('hidden');
 }
 
 // Rate Limit Display Functions
@@ -1151,84 +1169,11 @@ function startRateLimitCountdown(resetTimestamp: number): void {
 }
 
 function displayRateLimitInfo(info: RateLimitInfo, fromCache: boolean): void {
-    const rateLimitEl = document.getElementById('rateLimitInfo');
-    if (!rateLimitEl) return;
+    if (!dom.rateLimitInfo) return;
 
     const resetCountdown = formatCountdown(info.reset);
-    const usagePercent = Math.round((info.used / info.limit) * 100);
-
-    // Determine rate limit status and authentication state
-    const { statusText, isAuthenticated } = getRateLimitStatus(info.remaining, info.limit);
-    const authStatusBadge = isAuthenticated
-        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Authenticated</span>'
-        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">Unauthenticated</span>';
-
-    // Map status text to CSS classes
-    let statusClass: string;
-    let statusBgClass: string;
-    if (statusText === 'Good') {
-        statusClass = 'text-green-600 dark:text-green-400';
-        statusBgClass = 'bg-green-100 dark:bg-green-900/30';
-    } else if (statusText === 'Warning') {
-        statusClass = 'text-yellow-600 dark:text-yellow-400';
-        statusBgClass = 'bg-yellow-100 dark:bg-yellow-900/30';
-    } else {
-        statusClass = 'text-red-600 dark:text-red-400';
-        statusBgClass = 'bg-red-100 dark:bg-red-900/30';
-    }
-
-    const cacheIndicator = fromCache
-        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">Cached</span>'
-        : '';
-
-    rateLimitEl.innerHTML = `
-        <div class="space-y-3">
-            <!-- Header -->
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200">GitHub Search API</span>
-                    ${authStatusBadge}
-                    ${cacheIndicator}
-                </div>
-                <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium ${statusClass} ${statusBgClass}">${statusText}</span>
-            </div>
-
-            <!-- Progress Section -->
-            <div class="space-y-2">
-                <div class="flex justify-between items-baseline">
-                    <div class="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                        <span class="${info.remaining <= info.limit * 0.2 ? 'text-red-600 dark:text-red-400' : ''}">${info.remaining}</span>
-                        <span class="text-sm font-normal text-slate-500 dark:text-slate-400">/ ${info.limit} remaining</span>
-                    </div>
-                    <div class="text-right">
-                        <div class="text-xs text-slate-500 dark:text-slate-400">Resets in</div>
-                        <div id="rateLimitCountdown" class="text-sm font-mono font-medium text-slate-700 dark:text-slate-200">${resetCountdown}</div>
-                    </div>
-                </div>
-                <div class="relative h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                    <div class="absolute left-0 top-0 h-full rounded-full transition-all duration-300 ${info.remaining > info.limit * 0.5 ? 'bg-green-500' : info.remaining > info.limit * 0.2 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: ${100 - usagePercent}%"></div>
-                </div>
-            </div>
-
-            <!-- Info Section -->
-            <div class="pt-2 border-t border-slate-200 dark:border-slate-700">
-                <div class="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                    ${fromCache
-                        ? '<p>📦 Data loaded from cache (5 min TTL). No API call made.</p>'
-                        : `<p>🔄 Used ${info.used} requests this minute</p>`
-                    }
-                    <p class="flex items-start gap-1">
-                        <span class="shrink-0">💡</span>
-                        <span>${isAuthenticated
-                            ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
-                            : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">PAT</a> to increase to 30 requests/min.'
-                        }</span>
-                    </p>
-                </div>
-            </div>
-        </div>
-    `;
-    rateLimitEl.classList.remove('hidden');
+    dom.rateLimitInfo.innerHTML = generateRateLimitHtml({ info, fromCache, resetCountdown });
+    dom.rateLimitInfo.classList.remove('hidden');
 
     // Start countdown timer
     startRateLimitCountdown(info.reset);
@@ -1240,6 +1185,5 @@ function hideRateLimitInfo(): void {
         clearInterval(state.rateLimitCountdownInterval);
         state.rateLimitCountdownInterval = null;
     }
-    const rateLimitEl = document.getElementById('rateLimitInfo');
-    if (rateLimitEl) rateLimitEl.classList.add('hidden');
+    if (dom.rateLimitInfo) dom.rateLimitInfo.classList.add('hidden');
 }
