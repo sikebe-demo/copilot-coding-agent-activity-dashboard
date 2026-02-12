@@ -148,6 +148,174 @@ test.describe('PR List', () => {
 });
 
 // ============================================================================
+// PR Item Interaction Tests
+// ============================================================================
+
+test.describe('PR Item Click and Keyboard Interaction', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+  });
+
+  test('should have correct data-url and aria-label on PR items', async ({ page }) => {
+    const prs = [createPR({
+      number: 42,
+      title: 'Fix login bug',
+      state: 'open',
+      html_url: 'https://github.com/test/repo/pull/42'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    const prItem = page.locator('#prList [role="link"]').first();
+    await expect(prItem).toHaveAttribute('data-url', 'https://github.com/test/repo/pull/42');
+    await expect(prItem).toHaveAttribute('aria-label', 'Open pull request: Fix login bug');
+    await expect(prItem).toHaveAttribute('tabindex', '0');
+  });
+
+  test('should open PR in new tab when clicking a PR item', async ({ page }) => {
+    const prs = [createPR({
+      number: 10,
+      title: 'Add feature',
+      state: 'open',
+      html_url: 'https://github.com/test/repo/pull/10'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    const prItem = page.locator('#prList [role="link"]').first();
+
+    // Intercept window.open to verify it's called with the correct URL
+    const openCalls = [];
+    await page.exposeFunction('__captureOpen', (url, target, features) => {
+      openCalls.push({ url, target, features });
+    });
+    await page.evaluate(() => {
+      window.open = (url, target, features) => {
+        window.__captureOpen(url, target, features);
+        return null;
+      };
+    });
+
+    await prItem.click();
+
+    expect(openCalls.length).toBe(1);
+    expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/10');
+    expect(openCalls[0].target).toBe('_blank');
+    expect(openCalls[0].features).toBe('noopener,noreferrer');
+  });
+
+  test('should not double-navigate when clicking the existing icon link', async ({ page }) => {
+    const prs = [createPR({
+      number: 10,
+      title: 'Add feature',
+      state: 'open',
+      html_url: 'https://github.com/test/repo/pull/10'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // Intercept window.open
+    const openCalls = [];
+    await page.exposeFunction('__captureOpen2', (url) => {
+      openCalls.push(url);
+    });
+    await page.evaluate(() => {
+      window.open = (url) => {
+        window.__captureOpen2(url);
+        return null;
+      };
+    });
+
+    // Click the anchor link inside the PR item, not the item itself
+    const anchor = page.locator('#prList [role="link"] a').first();
+    if (await anchor.count() > 0) {
+      // Prevent actual navigation
+      await page.evaluate(() => {
+        document.querySelectorAll('#prList [role="link"] a').forEach(a => {
+          a.addEventListener('click', e => e.preventDefault());
+        });
+      });
+      await anchor.click();
+      // window.open should NOT have been called because the click handler checks for <a>
+      expect(openCalls.length).toBe(0);
+    }
+  });
+
+  test('should open PR when pressing Enter on a focused PR item', async ({ page }) => {
+    const prs = [createPR({
+      number: 20,
+      title: 'Keyboard nav test',
+      state: 'closed',
+      merged_at: getDaysAgoISO(1),
+      html_url: 'https://github.com/test/repo/pull/20'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    const prItem = page.locator('#prList [role="link"]').first();
+
+    const openCalls = [];
+    await page.exposeFunction('__captureOpenEnter', (url, target, features) => {
+      openCalls.push({ url, target, features });
+    });
+    await page.evaluate(() => {
+      window.open = (url, target, features) => {
+        window.__captureOpenEnter(url, target, features);
+        return null;
+      };
+    });
+
+    await prItem.focus();
+    await prItem.press('Enter');
+
+    expect(openCalls.length).toBe(1);
+    expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/20');
+  });
+
+  test('should open PR when pressing Space on a focused PR item', async ({ page }) => {
+    const prs = [createPR({
+      number: 30,
+      title: 'Space key test',
+      state: 'open',
+      html_url: 'https://github.com/test/repo/pull/30'
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    const prItem = page.locator('#prList [role="link"]').first();
+
+    const openCalls = [];
+    await page.exposeFunction('__captureOpenSpace', (url, target, features) => {
+      openCalls.push({ url, target, features });
+    });
+    await page.evaluate(() => {
+      window.open = (url, target, features) => {
+        window.__captureOpenSpace(url, target, features);
+        return null;
+      };
+    });
+
+    await prItem.focus();
+    await prItem.press(' ');
+
+    expect(openCalls.length).toBe(1);
+    expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/30');
+  });
+});
+
+// ============================================================================
 // Chart Tests
 // ============================================================================
 
