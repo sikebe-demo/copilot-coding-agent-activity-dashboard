@@ -50,7 +50,7 @@ test.describe('PR List Pagination', () => {
     await waitForResults(page);
 
     await expect(page.locator('#prPagination')).not.toBeEmpty();
-    await expect(page.locator('#prPagination')).toContainText('1-10 / 15件');
+    await expect(page.locator('#prPagination')).toContainText('1-10 of 15');
     await expect(page.locator('#prPagination button:has-text("1")')).toBeVisible();
     await expect(page.locator('#prPagination button:has-text("2")')).toBeVisible();
   });
@@ -79,7 +79,7 @@ test.describe('PR List Pagination', () => {
     await expect(page.locator('#prList')).not.toContainText('[PR-01]');
     await expect(page.locator('#prList')).not.toContainText('[PR-10]');
 
-    await expect(page.locator('#prPagination')).toContainText('11-15 / 15件');
+    await expect(page.locator('#prPagination')).toContainText('11-15 of 15');
   });
 
   test('should navigate to previous page', async ({ page }) => {
@@ -97,12 +97,12 @@ test.describe('PR List Pagination', () => {
     await waitForResults(page);
 
     await page.locator('#prPagination button:has-text("2")').click();
-    await expect(page.locator('#prPagination')).toContainText('11-15 / 15件');
+    await expect(page.locator('#prPagination')).toContainText('11-15 of 15');
 
     await page.locator('#prPagination button').first().click();
 
     await expect(page.locator('#prList')).toContainText('PR 1');
-    await expect(page.locator('#prPagination')).toContainText('1-10 / 15件');
+    await expect(page.locator('#prPagination')).toContainText('1-10 of 15');
   });
 
   test('should disable previous button on first page', async ({ page }) => {
@@ -158,7 +158,7 @@ test.describe('PR List Pagination', () => {
     await waitForResults(page);
 
     await page.locator('#prPagination button:has-text("2")').click();
-    await expect(page.locator('#prPagination')).toContainText('11-15 / 15件');
+    await expect(page.locator('#prPagination')).toContainText('11-15 of 15');
 
     const newPrs = Array.from({ length: 12 }, (_, i) => createPR({
       id: i + 100,
@@ -174,7 +174,7 @@ test.describe('PR List Pagination', () => {
     await submitSearch(page, { repo: 'test/repo2' });
     await waitForResults(page);
 
-    await expect(page.locator('#prPagination')).toContainText('1-10 / 12件');
+    await expect(page.locator('#prPagination')).toContainText('1-10 of 12');
     await expect(page.locator('#prList')).toContainText('Second Search PR 1');
   });
 
