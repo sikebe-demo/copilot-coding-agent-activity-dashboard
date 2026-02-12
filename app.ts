@@ -725,33 +725,44 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
 
     paginatedPRs.forEach((pr) => {
         const prElement = document.createElement('div');
-        prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 cursor-pointer transition-all hover:shadow-md';
         const sanitizedUrl = sanitizeUrl(pr.html_url);
-        if (sanitizedUrl !== '#') {
+        const hasValidUrl = sanitizedUrl !== '#';
+
+        const baseClasses =
+            'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 transition-all';
+        const interactiveClasses =
+            ' hover:border-indigo-500 dark:hover:border-indigo-400 cursor-pointer hover:shadow-md';
+
+        prElement.className = hasValidUrl ? baseClasses + interactiveClasses : baseClasses;
+
+        if (hasValidUrl) {
             prElement.setAttribute('data-url', sanitizedUrl);
-        }
-        prElement.setAttribute('role', 'link');
-        prElement.setAttribute('aria-label', `Open pull request: ${pr.title || 'Untitled'}`);
-        prElement.setAttribute('tabindex', '0');
+            prElement.setAttribute('role', 'link');
+            prElement.setAttribute('aria-label', `Open pull request: ${pr.title || 'Untitled'}`);
+            prElement.setAttribute('tabindex', '0');
 
-        const openPR = () => {
-            const url = prElement.getAttribute('data-url');
-            if (url) {
-                window.open(url, '_blank', 'noopener,noreferrer');
-            }
-        };
+            const openPR = () => {
+                const url = prElement.getAttribute('data-url');
+                if (url) {
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                }
+            };
 
-        prElement.addEventListener('click', (e) => {
-            // Don't navigate if user clicked on the existing icon link itself
-            if ((e.target as HTMLElement).closest('a')) return;
-            openPR();
-        });
-        prElement.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
+            prElement.addEventListener('click', (e) => {
+                // Don't navigate if user clicked on the existing icon link itself
+                const target = e.target;
+                if (target instanceof Element && target.closest('a')) return;
                 openPR();
-            }
-        });
+            });
+            prElement.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openPR();
+                }
+            });
+        } else {
+            prElement.setAttribute('aria-label', `Pull request (no link available): ${pr.title || 'Untitled'}`);
+        }
         prElement.innerHTML = generatePRItemHtml(pr);
         prList.appendChild(prElement);
     });

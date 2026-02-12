@@ -236,17 +236,16 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
 
     // Click the anchor link inside the PR item, not the item itself
     const anchor = page.locator('#prList [role="link"] a').first();
-    if (await anchor.count() > 0) {
-      // Prevent actual navigation
-      await page.evaluate(() => {
-        document.querySelectorAll('#prList [role="link"] a').forEach(a => {
-          a.addEventListener('click', e => e.preventDefault());
-        });
+    await expect(anchor).toBeVisible();
+    // Prevent actual navigation
+    await page.evaluate(() => {
+      document.querySelectorAll('#prList [role="link"] a').forEach(a => {
+        a.addEventListener('click', e => e.preventDefault());
       });
-      await anchor.click();
-      // window.open should NOT have been called because the click handler checks for <a>
-      expect(openCalls.length).toBe(0);
-    }
+    });
+    await anchor.click();
+    // window.open should NOT have been called because the click handler checks for <a>
+    expect(openCalls.length).toBe(0);
   });
 
   test('should open PR when pressing Enter on a focused PR item', async ({ page }) => {
