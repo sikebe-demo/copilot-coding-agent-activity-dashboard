@@ -103,9 +103,7 @@ export function displayPagination(totalPages: number, totalItems: number): void 
     paginationEl.appendChild(navContainer);
     navEl.appendChild(paginationEl);
 
-    const fragment = document.createDocumentFragment();
-    fragment.appendChild(navEl);
-    paginationContainer.appendChild(fragment);
+    paginationContainer.appendChild(navEl);
 }
 
 export function goToPage(page: number): void {

@@ -75,7 +75,7 @@ export function initializePRListEvents(): void {
     dom.prList.addEventListener('click', (e) => {
         const target = e.target;
         if (!(target instanceof Element)) return;
-        // Don't navigate if user clicked on an inner anchor
+        // Defensive: if inner anchors are added in the future, let them handle navigation
         if (target.closest('a')) return;
         const prCard = target.closest('[data-url]') as HTMLElement | null;
         if (prCard) {
@@ -85,7 +85,7 @@ export function initializePRListEvents(): void {
     });
 
     dom.prList.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (e.key !== 'Enter') return;
         const target = e.target;
         if (!(target instanceof Element)) return;
         const prCard = target.closest('[data-url]') as HTMLElement | null;
