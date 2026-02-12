@@ -210,7 +210,7 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
     expect(openCalls[0].features).toBe('noopener,noreferrer');
   });
 
-  test('should not double-navigate when clicking the existing icon link', async ({ page }) => {
+  test('should ignore container click handler when clicking the existing icon link', async ({ page }) => {
     const prs = [createPR({
       number: 10,
       title: 'Add feature',

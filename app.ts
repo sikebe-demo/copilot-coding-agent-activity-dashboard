@@ -769,6 +769,11 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
         prItemContainer.innerHTML = generatePRItemHtml(pr);
 
         if (hasValidUrl) {
+            // Add hover color styles to the PR title only when the item is interactive
+            const titleEl = prItemContainer.querySelector('h3');
+            if (titleEl) {
+                titleEl.classList.add('hover:text-indigo-600', 'dark:hover:text-indigo-400');
+            }
             // Set inner anchor to tabindex="-1" so only the outer container is focusable
             const innerLinks = prItemContainer.querySelectorAll('a');
             innerLinks.forEach((anchor) => {
