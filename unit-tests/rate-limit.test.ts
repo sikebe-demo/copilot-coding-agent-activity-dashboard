@@ -125,6 +125,10 @@ describe('extractRateLimitInfo', () => {
 });
 
 describe('formatCountdown', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("should format future timestamp as 'm:ss'", () => {
     vi.useFakeTimers();
     // Fix time to an exact second boundary to avoid truncation issues
@@ -133,7 +137,6 @@ describe('formatCountdown', () => {
     const resetTimestamp = nowSec + 59 * 60 + 59;
     const result = formatCountdown(resetTimestamp);
     expect(result).toBe('59:59');
-    vi.useRealTimers();
   });
 
   it("should return '0:00' for past timestamp", () => {
@@ -143,7 +146,6 @@ describe('formatCountdown', () => {
     const resetTimestamp = nowSec - 60; // 60 seconds in the past
     const result = formatCountdown(resetTimestamp);
     expect(result).toBe('0:00');
-    vi.useRealTimers();
   });
 
   it('should pad seconds with leading zero', () => {
@@ -154,7 +156,6 @@ describe('formatCountdown', () => {
     const resetTimestamp = nowSec + 65;
     const result = formatCountdown(resetTimestamp);
     expect(result).toBe('1:05');
-    vi.useRealTimers();
   });
 });
 

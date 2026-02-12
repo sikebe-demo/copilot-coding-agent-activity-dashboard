@@ -3,11 +3,11 @@ import { escapeHtml, sanitizeUrl, formatPRNumber } from '../lib';
 
 describe('escapeHtml', () => {
   it('should return empty string for null input', () => {
-    expect(escapeHtml(null as unknown as string)).toBe('');
+    expect(escapeHtml(null)).toBe('');
   });
 
   it('should return empty string for undefined input', () => {
-    expect(escapeHtml(undefined as unknown as string)).toBe('');
+    expect(escapeHtml(undefined)).toBe('');
   });
 
   it('should escape <script> tags', () => {
@@ -44,11 +44,11 @@ describe('escapeHtml', () => {
 
 describe('sanitizeUrl', () => {
   it('should return "#" for null input', () => {
-    expect(sanitizeUrl(null as unknown as string)).toBe('#');
+    expect(sanitizeUrl(null)).toBe('#');
   });
 
   it('should return "#" for undefined input', () => {
-    expect(sanitizeUrl(undefined as unknown as string)).toBe('#');
+    expect(sanitizeUrl(undefined)).toBe('#');
   });
 
   it('should return "#" for javascript: URLs', () => {

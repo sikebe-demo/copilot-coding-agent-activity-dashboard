@@ -519,8 +519,8 @@ export function buildSearchUrl(query: string, perPage: number, page: number): st
 /**
  * Builds request headers for GitHub API.
  */
-export function buildApiHeaders(token: string): HeadersInit {
-    const headers: HeadersInit = {
+export function buildApiHeaders(token: string): Record<string, string> {
+    const headers: Record<string, string> = {
         'Accept': 'application/vnd.github.v3+json'
     };
     if (token) {
