@@ -586,6 +586,38 @@ export function sortPRsByDate(prs: PullRequest[]): PullRequest[] {
     );
 }
 
+/**
+ * Filter type for PR status: 'all' shows everything, others match the PR status.
+ */
+export type PRFilterStatus = 'all' | 'merged' | 'closed' | 'open';
+
+/**
+ * Filters PRs by status and/or search text.
+ * Pure function with no DOM dependencies.
+ */
+export function filterPRs(
+    prs: PullRequest[],
+    statusFilter: PRFilterStatus,
+    searchText: string
+): PullRequest[] {
+    let filtered = prs;
+
+    // Filter by status
+    if (statusFilter !== 'all') {
+        filtered = filtered.filter(pr => getPRStatus(pr) === statusFilter);
+    }
+
+    // Filter by search text (case-insensitive title match)
+    const query = searchText.trim().toLowerCase();
+    if (query) {
+        filtered = filtered.filter(pr =>
+            (pr.title ?? '').toLowerCase().includes(query)
+        );
+    }
+
+    return filtered;
+}
+
 // ============================================================================
 // PR List Rendering (Pure HTML generation)
 // ============================================================================

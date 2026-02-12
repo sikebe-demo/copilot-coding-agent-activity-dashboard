@@ -23,6 +23,7 @@ import {
     adjustClosedCount,
     createRatioHtml,
     sortPRsByDate,
+    filterPRs,
     generatePRItemHtml,
     generateEmptyListHtml,
     ITEMS_PER_PAGE,
@@ -33,6 +34,7 @@ import type {
     RateLimitInfo,
     AllPRCounts,
     SearchResponse,
+    PRFilterStatus,
 } from './lib';
 
 // Timer for rate limit countdown
@@ -48,6 +50,11 @@ let chartInstance: Chart | null = null;
 let currentPage = 1;
 let currentPRs: PullRequest[] = [];
 
+// Filter state
+let allFetchedPRs: PullRequest[] = [];
+let activeStatusFilter: PRFilterStatus = 'all';
+let activeSearchText = '';
+
 // Default loading text (shared between index.html initial state and resetLoadingProgress)
 const DEFAULT_LOADING_TITLE = 'Fetching data...';
 const DEFAULT_LOADING_MESSAGE = 'Loading PR information from GitHub API';
@@ -56,6 +63,7 @@ const DEFAULT_LOADING_MESSAGE = 'Loading PR information from GitHub API';
 document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
     initializeForm();
+    initializeFilters();
     setDefaultDates();
 });
 
@@ -129,6 +137,81 @@ function initializePresetRepos(): void {
                 repoInput.focus();
             }
         });
+    });
+}
+
+// PR List Filter initialization
+function initializeFilters(): void {
+    // Status filter buttons
+    const filterButtons = document.querySelectorAll<HTMLButtonElement>('.pr-filter-btn');
+    filterButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const filter = button.dataset.filter as PRFilterStatus | undefined;
+            if (filter) {
+                activeStatusFilter = filter;
+                updateFilterButtonStyles();
+                applyFilters();
+            }
+        });
+    });
+
+    // Text search input with debounce
+    const searchInput = document.getElementById('prSearchInput') as HTMLInputElement | null;
+    let debounceTimer: number | null = null;
+    searchInput?.addEventListener('input', () => {
+        if (debounceTimer !== null) clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(() => {
+            activeSearchText = searchInput.value;
+            applyFilters();
+        }, 300);
+    });
+}
+
+function applyFilters(): void {
+    if (allFetchedPRs.length === 0) return;
+    displayPRList(allFetchedPRs, true);
+}
+
+function resetFilterUI(): void {
+    // Reset search input
+    const searchInput = document.getElementById('prSearchInput') as HTMLInputElement | null;
+    if (searchInput) searchInput.value = '';
+
+    // Reset button styles
+    updateFilterButtonStyles();
+}
+
+function updateFilterButtonStyles(): void {
+    const filterButtons = document.querySelectorAll<HTMLButtonElement>('.pr-filter-btn');
+
+    // Active & inactive style maps per filter type
+    const activeStyles: Record<string, string> = {
+        all: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-400 dark:border-indigo-500',
+        merged: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-400 dark:border-green-500',
+        closed: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-400 dark:border-red-500',
+        open: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-500',
+    };
+    const inactiveStyle = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
+
+    // Classes that should be removed when switching between states
+    const allColorClasses = [
+        'bg-indigo-100', 'dark:bg-indigo-900/30', 'text-indigo-700', 'dark:text-indigo-300', 'border-indigo-400', 'dark:border-indigo-500',
+        'bg-green-100', 'dark:bg-green-900/30', 'text-green-700', 'dark:text-green-300', 'border-green-400', 'dark:border-green-500',
+        'bg-red-100', 'dark:bg-red-900/30', 'text-red-700', 'dark:text-red-300', 'border-red-400', 'dark:border-red-500',
+        'bg-blue-100', 'dark:bg-blue-900/30', 'text-blue-700', 'dark:text-blue-300', 'border-blue-400', 'dark:border-blue-500',
+        'bg-slate-100', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-400', 'border-slate-200', 'dark:border-slate-700',
+    ];
+
+    filterButtons.forEach((button) => {
+        const filter = button.dataset.filter ?? '';
+        const isActive = filter === activeStatusFilter;
+
+        // Remove all color-related classes
+        button.classList.remove(...allColorClasses);
+
+        // Add appropriate classes
+        const classes = isActive ? (activeStyles[filter] ?? inactiveStyle) : inactiveStyle;
+        button.classList.add(...classes.split(' '));
     });
 }
 
@@ -430,6 +513,12 @@ function displayResults(prs: PullRequest[], fromDate: string, toDate: string, al
     // Display chart with date range passed from form submission
     displayChart(prs, fromDate, toDate);
 
+    // Store all fetched PRs for filtering and reset filter state
+    allFetchedPRs = sortPRsByDate(prs);
+    activeStatusFilter = 'all';
+    activeSearchText = '';
+    resetFilterUI();
+
     // Display PR list
     displayPRList(prs);
 
@@ -587,9 +676,9 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
     const prList = document.getElementById('prList');
     if (!prList) return;
 
-    // Store PRs globally and reset page if needed
+    // Apply filters and store globally, resetting page if needed
     if (resetPage) {
-        currentPRs = sortPRsByDate(prs);
+        currentPRs = sortPRsByDate(filterPRs(prs, activeStatusFilter, activeSearchText));
         currentPage = 1;
     }
 
