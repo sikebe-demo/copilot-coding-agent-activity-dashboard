@@ -763,7 +763,23 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
         } else {
             prElement.setAttribute('aria-label', `Pull request (no link available): ${pr.title || 'Untitled'}`);
         }
-        prElement.innerHTML = generatePRItemHtml(pr);
+
+        // Generate PR item HTML and remove any non-functional "#" links when no valid URL exists
+        const prItemContainer = document.createElement('div');
+        prItemContainer.innerHTML = generatePRItemHtml(pr);
+
+        if (!hasValidUrl) {
+            // Remove or neutralize any anchors that point to "#" so they are not focusable fake links
+            const placeholderLinks = prItemContainer.querySelectorAll('a[href="#"]');
+            placeholderLinks.forEach((anchor) => {
+                const span = document.createElement('span');
+                span.className = anchor.className;
+                span.innerHTML = anchor.innerHTML;
+                anchor.replaceWith(span);
+            });
+        }
+
+        prElement.innerHTML = prItemContainer.innerHTML;
         prList.appendChild(prElement);
     });
 

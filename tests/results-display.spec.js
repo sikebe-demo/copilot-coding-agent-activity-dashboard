@@ -204,7 +204,7 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
 
     await prItem.click();
 
-    expect(openCalls.length).toBe(1);
+    await expect.poll(() => openCalls.length).toBe(1);
     expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/10');
     expect(openCalls[0].target).toBe('_blank');
     expect(openCalls[0].features).toBe('noopener,noreferrer');
@@ -277,7 +277,7 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
     await prItem.focus();
     await prItem.press('Enter');
 
-    expect(openCalls.length).toBe(1);
+    await expect.poll(() => openCalls.length).toBe(1);
     expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/20');
   });
 
@@ -309,7 +309,7 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
     await prItem.focus();
     await prItem.press(' ');
 
-    expect(openCalls.length).toBe(1);
+    await expect.poll(() => openCalls.length).toBe(1);
     expect(openCalls[0].url).toBe('https://github.com/test/repo/pull/30');
   });
 });
