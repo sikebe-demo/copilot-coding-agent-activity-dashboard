@@ -523,7 +523,7 @@ function displayResults(prs: PullRequest[], fromDate: string, toDate: string, al
     resetFilterUI();
 
     // Display PR list
-    displayPRList(prs);
+    displayPRList(allFetchedPRs);
 
     showResults();
 }
