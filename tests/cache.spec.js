@@ -9,8 +9,9 @@ import {
   waitForRateLimitInfo
 } from './helpers.js';
 
-// Expected API call count per search: 1 search query + 4 fetchAllPRCounts queries (open, closed, total, copilot-merged)
-const EXPECTED_API_CALLS = 5;
+// Expected API call count per search: 1 search query + 3 fetchAllPRCounts queries (total, merged, open)
+// Note: closed count is calculated as total - merged - open (no separate API call)
+const EXPECTED_API_CALLS = 4;
 
 // ============================================================================
 // Cache Tests
