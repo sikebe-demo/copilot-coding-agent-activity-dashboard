@@ -79,4 +79,25 @@ describe('filterPRs', () => {
         const result = filterPRs(prs, 'all', '   ');
         expect(result).toHaveLength(4);
     });
+
+    it('handles regex metacharacters in search text without throwing', () => {
+        const prs: PullRequest[] = [
+            createTestPR({ id: 1, title: 'Fix .*+?()[] issue' }),
+            createTestPR({ id: 2, title: 'Normal title' }),
+        ];
+        const result = filterPRs(prs, 'all', '.*+?');
+        // Should match literally since filterPRs uses includes() not regex
+        expect(result).toHaveLength(1);
+        expect(result[0].title).toBe('Fix .*+?()[] issue');
+    });
+
+    it('handles Unicode characters in search text', () => {
+        const prs: PullRequest[] = [
+            createTestPR({ id: 1, title: '日本語のPRタイトル' }),
+            createTestPR({ id: 2, title: 'English title' }),
+        ];
+        const result = filterPRs(prs, 'all', '日本語');
+        expect(result).toHaveLength(1);
+        expect(result[0].title).toBe('日本語のPRタイトル');
+    });
 });

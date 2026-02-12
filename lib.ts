@@ -90,6 +90,7 @@ export const ITEMS_PER_PAGE = 10;
 export const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
 export const CACHE_VERSION = 'v2';
 export const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+export const CACHE_CLEANUP_INTERVAL_MS = 60 * 1000; // 1 minute
 
 // ============================================================================
 // HTML Escaping & Sanitization
@@ -158,10 +159,15 @@ export function parseRepoInput(repoInput: string): { owner: string; repo: string
 }
 
 /**
- * Validates that fromDate is not after toDate.
+ * Validates that date strings parse to valid dates and that fromDate is not after toDate.
  */
 export function validateDateRange(fromDate: string, toDate: string): string | null {
-    if (new Date(fromDate) > new Date(toDate)) {
+    const from = new Date(fromDate);
+    const to = new Date(toDate);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+        return 'Invalid date format';
+    }
+    if (from > to) {
         return 'Start date must be before end date';
     }
     return null;
@@ -177,20 +183,62 @@ export function getCacheKey(owner: string, repo: string, fromDate: string, toDat
     return `${CACHE_KEY_PREFIX}${CACHE_VERSION}_${paramsKey}${authSuffix}`;
 }
 
+function isValidAllPRCounts(value: unknown): value is AllPRCounts {
+    if (typeof value !== 'object' || value === null) return false;
+    const obj = value as Record<string, unknown>;
+    return (
+        typeof obj.total === 'number' &&
+        typeof obj.merged === 'number' &&
+        typeof obj.closed === 'number' &&
+        typeof obj.open === 'number'
+    );
+}
+
+function isValidRateLimitInfo(value: unknown): value is RateLimitInfo | null {
+    if (value === null) return true;
+    if (typeof value !== 'object') return false;
+    const obj = value as Record<string, unknown>;
+    return (
+        typeof obj.limit === 'number' &&
+        typeof obj.remaining === 'number' &&
+        typeof obj.reset === 'number' &&
+        typeof obj.used === 'number'
+    );
+}
+
+/**
+ * Type guard that validates a parsed object conforms to the CacheEntry schema.
+ */
+export function isCacheEntry(value: unknown): value is CacheEntry {
+    if (typeof value !== 'object' || value === null) return false;
+    const obj = value as Record<string, unknown>;
+
+    if (!Array.isArray(obj.data)) return false;
+    if (typeof obj.timestamp !== 'number') return false;
+    if (!isValidAllPRCounts(obj.allPRCounts)) return false;
+    if (!isValidRateLimitInfo(obj.rateLimitInfo)) return false;
+
+    return true;
+}
+
 export function getFromCache(cacheKey: string, storage: Storage = localStorage): CacheEntry | null {
     try {
         const cached = storage.getItem(cacheKey);
         if (!cached) return null;
 
-        const entry: CacheEntry = JSON.parse(cached);
-        const now = Date.now();
-
-        if (now - entry.timestamp > CACHE_DURATION_MS) {
+        const parsed: unknown = JSON.parse(cached);
+        if (!isCacheEntry(parsed)) {
             storage.removeItem(cacheKey);
             return null;
         }
 
-        return entry;
+        const now = Date.now();
+        if (now - parsed.timestamp > CACHE_DURATION_MS) {
+            storage.removeItem(cacheKey);
+            return null;
+        }
+
+        return parsed;
     } catch {
         return null;
     }
@@ -210,7 +258,18 @@ export function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo
     }
 }
 
+let lastCacheCleanupTime = 0;
+
+export function resetCacheCleanupTimer(): void {
+    lastCacheCleanupTime = 0;
+}
+
 export function clearOldCache(storage: Storage = localStorage): void {
+    const now = Date.now();
+    if (now - lastCacheCleanupTime < CACHE_CLEANUP_INTERVAL_MS) {
+        return; // Skip if cleaned recently
+    }
+    lastCacheCleanupTime = now;
     try {
         const keysToRemove: string[] = [];
         const currentVersionPrefix = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_`;
@@ -589,7 +648,7 @@ export function sortPRsByDate(prs: PullRequest[]): PullRequest[] {
 /**
  * Filter type for PR status: 'all' shows everything, others match the PR status.
  */
-export type PRFilterStatus = 'all' | keyof StatusConfigMap;
+export type PRFilterStatus = 'all' | 'merged' | 'closed' | 'open';
 
 /**
  * Filters PRs by status and/or search text.
@@ -653,12 +712,34 @@ export function getPRStatus(pr: PullRequest): keyof StatusConfigMap {
 /**
  * Generates the inner HTML for a single PR list item.
  * Returns a pure HTML string with no DOM dependencies.
+ *
+ * @param isInteractive When true, renders hover/cursor classes on the external link
+ *   and hover color classes on the title. When false, omits them.
  */
-export function generatePRItemHtml(pr: PullRequest): string {
+export function generatePRItemHtml(pr: PullRequest, isInteractive = true): string {
     const createdDate = new Date(pr.created_at).toLocaleDateString('en-US');
     const status = getPRStatus(pr);
     const config = PR_STATUS_CONFIG[status];
     const prNumberDisplay = formatPRNumber(pr.number);
+
+    const sanitizedUrl = sanitizeUrl(pr.html_url);
+    const hasValidUrl = sanitizedUrl !== '#';
+
+    // External link: render as span (not anchor) to avoid nested link issues
+    const externalLinkClasses = isInteractive
+        ? 'shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer'
+        : 'shrink-0 p-1.5 rounded-lg transition-colors';
+
+    const externalLink = `
+                <span class="${externalLinkClasses}"${hasValidUrl ? ' title="Open in GitHub"' : ''}>
+                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                </span>`;
+
+    const titleHoverClasses = isInteractive ? ' hover:text-indigo-600 dark:hover:text-indigo-400' : '';
 
     return `
             <div class="flex items-start justify-between gap-4 mb-3">
@@ -669,17 +750,9 @@ export function generatePRItemHtml(pr: PullRequest): string {
                     </span>
                     ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-400">${prNumberDisplay}</span>` : ''}
                 </div>
-                <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
-                   class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                   title="Open in GitHub">
-                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                        <polyline points="15 3 21 3 21 9"></polyline>
-                        <line x1="10" y1="14" x2="21" y2="3"></line>
-                    </svg>
-                </a>
+                ${externalLink}
             </div>
-            <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8 transition-colors">${escapeHtml(pr.title)}</h3>
+            <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8 transition-colors${titleHoverClasses}">${escapeHtml(pr.title)}</h3>
             <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
                 <span class="flex items-center gap-1">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -730,4 +803,188 @@ export function generateFilteredEmptyListHtml(): string {
                 <p class="text-sm text-slate-500 dark:text-slate-500 mt-1">Try adjusting your status filter or search text</p>
             </div>
         `;
+}
+
+// ============================================================================
+// Chart Constants
+// ============================================================================
+
+export const CHART_COLORS = {
+    merged: {
+        backgroundColor: 'rgba(16, 185, 129, 0.8)',
+        borderColor: 'rgba(16, 185, 129, 1)',
+    },
+    closed: {
+        backgroundColor: 'rgba(239, 68, 68, 0.8)',
+        borderColor: 'rgba(239, 68, 68, 1)',
+    },
+    open: {
+        backgroundColor: 'rgba(59, 130, 246, 0.8)',
+        borderColor: 'rgba(59, 130, 246, 1)',
+    },
+} as const;
+
+export interface ChartTheme {
+    textColor: string;
+    gridColor: string;
+    tooltipBg: string;
+    tooltipBorder: string;
+}
+
+export function getChartTheme(isDark: boolean): ChartTheme {
+    return {
+        textColor: isDark ? '#f1f5f9' : '#1e293b',
+        gridColor: isDark ? '#475569' : '#e2e8f0',
+        tooltipBg: isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+        tooltipBorder: isDark ? '#334155' : '#e2e8f0',
+    };
+}
+
+// ============================================================================
+// Filter Button Style Constants
+// ============================================================================
+
+export interface FilterStyleConfig {
+    active: string;
+    hover: string;
+}
+
+export const FILTER_STYLE_MAP: Record<PRFilterStatus, FilterStyleConfig> = {
+    all: {
+        active: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-400 dark:border-indigo-500',
+        hover: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 dark:hover:border-indigo-500',
+    },
+    merged: {
+        active: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-400 dark:border-green-500',
+        hover: 'hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-700 dark:hover:text-green-300 hover:border-green-300 dark:hover:border-green-600',
+    },
+    closed: {
+        active: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-400 dark:border-red-500',
+        hover: 'hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-700 dark:hover:text-red-300 hover:border-red-300 dark:hover:border-red-600',
+    },
+    open: {
+        active: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-500',
+        hover: 'hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-300 hover:border-blue-300 dark:hover:border-blue-600',
+    },
+};
+
+export const FILTER_INACTIVE_STYLE = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
+
+/**
+ * Derives the complete set of color-related classes from the style map + inactive style.
+ * Used to remove all color classes before applying the correct ones.
+ */
+export function getAllFilterColorClasses(): string[] {
+    const classes = new Set<string>();
+    // Collect from inactive style
+    FILTER_INACTIVE_STYLE.split(' ').forEach(c => classes.add(c));
+    // Collect from all active, hover styles
+    for (const config of Object.values(FILTER_STYLE_MAP)) {
+        config.active.split(' ').forEach(c => classes.add(c));
+        config.hover.split(' ').forEach(c => classes.add(c));
+    }
+    return [...classes];
+}
+
+// ============================================================================
+// Rate Limit HTML Generation
+// ============================================================================
+
+export interface RateLimitDisplayParams {
+    info: RateLimitInfo;
+    fromCache: boolean;
+    resetCountdown: string;
+}
+
+/**
+ * Generates HTML for the rate limit info panel.
+ * Pure function with no DOM dependencies.
+ */
+export function generateRateLimitHtml(params: RateLimitDisplayParams): string {
+    const { info, fromCache, resetCountdown } = params;
+    const usagePercent = info.limit > 0
+        ? Math.max(0, Math.min(100, Math.round((info.used / info.limit) * 100)))
+        : 0;
+    const { statusText, isAuthenticated } = getRateLimitStatus(info.remaining, info.limit);
+
+    const authStatusBadge = isAuthenticated
+        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Authenticated</span>'
+        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">Unauthenticated</span>';
+
+    let statusClass: string;
+    let statusBgClass: string;
+    if (statusText === 'Good') {
+        statusClass = 'text-green-600 dark:text-green-400';
+        statusBgClass = 'bg-green-100 dark:bg-green-900/30';
+    } else if (statusText === 'Warning') {
+        statusClass = 'text-yellow-600 dark:text-yellow-400';
+        statusBgClass = 'bg-yellow-100 dark:bg-yellow-900/30';
+    } else {
+        statusClass = 'text-red-600 dark:text-red-400';
+        statusBgClass = 'bg-red-100 dark:bg-red-900/30';
+    }
+
+    const cacheIndicator = fromCache
+        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">Cached</span>'
+        : '';
+
+    const progressBarColor = info.remaining > info.limit * 0.5
+        ? 'bg-green-500'
+        : info.remaining > info.limit * 0.2
+            ? 'bg-yellow-500'
+            : 'bg-red-500';
+
+    const remainingHighlight = info.remaining <= info.limit * 0.2
+        ? 'text-red-600 dark:text-red-400'
+        : '';
+
+    const infoText = fromCache
+        ? '<p>📦 Data loaded from cache (5 min TTL). No API call made.</p>'
+        : `<p>🔄 Used ${info.used} requests this minute</p>`;
+
+    const authTip = isAuthenticated
+        ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
+        : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">PAT</a> to increase to 30 requests/min.';
+
+    return `
+        <div class="space-y-3">
+            <!-- Header -->
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200">GitHub Search API</span>
+                    ${authStatusBadge}
+                    ${cacheIndicator}
+                </div>
+                <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium ${statusClass} ${statusBgClass}">${statusText}</span>
+            </div>
+
+            <!-- Progress Section -->
+            <div class="space-y-2">
+                <div class="flex justify-between items-baseline">
+                    <div class="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        <span class="${remainingHighlight}">${info.remaining}</span>
+                        <span class="text-sm font-normal text-slate-500 dark:text-slate-400">/ ${info.limit} remaining</span>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-slate-500 dark:text-slate-400">Resets in</div>
+                        <div id="rateLimitCountdown" class="text-sm font-mono font-medium text-slate-700 dark:text-slate-200">${resetCountdown}</div>
+                    </div>
+                </div>
+                <div class="relative h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div class="absolute left-0 top-0 h-full rounded-full transition-all duration-300 ${progressBarColor}" style="width: ${100 - usagePercent}%"></div>
+                </div>
+            </div>
+
+            <!-- Info Section -->
+            <div class="pt-2 border-t border-slate-200 dark:border-slate-700">
+                <div class="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+                    ${infoText}
+                    <p class="flex items-start gap-1">
+                        <span class="shrink-0">💡</span>
+                        <span>${authTip}</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    `;
 }

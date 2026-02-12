@@ -59,27 +59,11 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-
-    // Uncomment to test on additional browsers (will increase test time significantly)
-    // {
-    //   name: 'firefox',
-    //   use: { ...devices['Desktop Firefox'] },
-    // },
-    //
-    // {
-    //   name: 'webkit',
-    //   use: { ...devices['Desktop Safari'] },
-    // },
-    //
-    // /* Test against mobile viewports. */
-    // {
-    //   name: 'Mobile Chrome',
-    //   use: { ...devices['Pixel 5'] },
-    // },
-    // {
-    //   name: 'Mobile Safari',
-    //   use: { ...devices['iPhone 12'] },
-    // },
+    // Firefox runs only in CI for broader browser coverage
+    ...(process.env.CI ? [{
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    }] : []),
   ],
 
   /* Run your local dev server before starting the tests */

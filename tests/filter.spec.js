@@ -123,8 +123,8 @@ test.describe('PR Filtering', () => {
     await waitForResults(page);
 
     await page.fill('#prSearchInput', 'feature');
-    // Wait for debounce (300ms) + rendering
-    await page.waitForTimeout(500);
+    // Wait for debounce to apply filter
+    await expect(page.locator('#prList > div')).toHaveCount(2);
 
     const prItems = page.locator('#prList > div');
     await expect(prItems).toHaveCount(2);
@@ -139,7 +139,7 @@ test.describe('PR Filtering', () => {
     await waitForResults(page);
 
     await page.fill('#prSearchInput', 'nonexistent');
-    await page.waitForTimeout(500);
+    await expect(page.locator('#prList')).toContainText(/No PRs/i);
 
     await expect(page.locator('#prList')).toContainText(/No PRs/i);
   });
@@ -157,7 +157,7 @@ test.describe('PR Filtering', () => {
     // Filter to merged + search "login"
     await page.click('#filterMerged');
     await page.fill('#prSearchInput', 'login');
-    await page.waitForTimeout(500);
+    await expect(page.locator('#prList > div')).toHaveCount(1);
 
     const prItems = page.locator('#prList > div');
     await expect(prItems).toHaveCount(1);

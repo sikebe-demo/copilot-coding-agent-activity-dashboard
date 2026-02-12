@@ -1,12 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getCacheKey,
   getFromCache,
   saveToCache,
   clearOldCache,
+  isCacheEntry,
   CACHE_KEY_PREFIX,
   CACHE_VERSION,
   CACHE_DURATION_MS,
+  resetCacheCleanupTimer,
+  CACHE_CLEANUP_INTERVAL_MS,
 } from '../lib';
 import type { PullRequest, CacheEntry, AllPRCounts } from '../lib';
 
@@ -14,8 +17,8 @@ import type { PullRequest, CacheEntry, AllPRCounts } from '../lib';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createMockStorage(): Storage {
-  const store = new Map<string, string>();
+function createMockStorage(initialData: Record<string, string> = {}): Storage {
+  const store = new Map<string, string>(Object.entries(initialData));
   return {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => { store.set(key, value); },
@@ -194,6 +197,7 @@ describe('clearOldCache', () => {
   beforeEach(() => {
     storage = createMockStorage();
     vi.restoreAllMocks();
+    resetCacheCleanupTimer();
   });
 
   it('should remove legacy cache entries (no version prefix)', () => {
@@ -251,5 +255,105 @@ describe('clearOldCache', () => {
     clearOldCache(storage);
 
     expect(storage.getItem(malformedKey)).toBeNull();
+  });
+});
+
+describe('isCacheEntry', () => {
+  it('should return true for valid cache entry', () => {
+    const entry = {
+      data: [createTestPR()],
+      timestamp: Date.now(),
+      rateLimitInfo: null,
+      allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 },
+    };
+    expect(isCacheEntry(entry)).toBe(true);
+  });
+
+  it('should return false for null', () => {
+    expect(isCacheEntry(null)).toBe(false);
+  });
+
+  it('should return false for non-object', () => {
+    expect(isCacheEntry('string')).toBe(false);
+    expect(isCacheEntry(42)).toBe(false);
+  });
+
+  it('should return false when data is not an array', () => {
+    expect(isCacheEntry({ data: 'not-array', timestamp: 1, allPRCounts: {} })).toBe(false);
+  });
+
+  it('should return false when timestamp is missing', () => {
+    expect(isCacheEntry({ data: [], allPRCounts: {} })).toBe(false);
+  });
+
+  it('should return false when allPRCounts is missing', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1 })).toBe(false);
+  });
+
+  it('should return false when allPRCounts has missing numeric fields', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: {} })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1 } })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0 } })).toBe(false);
+  });
+
+  it('should return false when allPRCounts has non-numeric fields', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 'x', merged: 0, closed: 0, open: 0 } })).toBe(false);
+  });
+
+  it('should return false when rateLimitInfo is a non-object non-null value', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }, rateLimitInfo: 'invalid' })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }, rateLimitInfo: 42 })).toBe(false);
+  });
+
+  it('should return false when rateLimitInfo is missing required fields', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: { limit: 60, remaining: 55, reset: 123456 } })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: {} })).toBe(false);
+  });
+
+  it('should accept valid rateLimitInfo as object or null', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: null })).toBe(true);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: { limit: 60, remaining: 55, reset: 123456, used: 5 } })).toBe(true);
+  });
+});
+
+describe('clearOldCache throttle', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-15T00:00:00Z'));
+    resetCacheCleanupTimer();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('should execute on first call', () => {
+    const storage = createMockStorage({
+      'copilot_pr_cache_old_key': JSON.stringify({ data: [], timestamp: 0, rateLimitInfo: null, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 } }),
+    });
+    clearOldCache(storage);
+    expect(storage.getItem('copilot_pr_cache_old_key')).toBeNull();
+  });
+
+  it('should skip cleanup when called within throttle interval', () => {
+    const storage = createMockStorage();
+    clearOldCache(storage);
+
+    storage.setItem('copilot_pr_cache_old_key', JSON.stringify({ data: [], timestamp: 0, rateLimitInfo: null, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 } }));
+
+    vi.advanceTimersByTime(30_000); // 30 seconds, less than 60s throttle
+    clearOldCache(storage);
+    expect(storage.getItem('copilot_pr_cache_old_key')).not.toBeNull();
+  });
+
+  it('should execute again after throttle interval', () => {
+    const storage = createMockStorage();
+    clearOldCache(storage);
+
+    storage.setItem('copilot_pr_cache_old_key', JSON.stringify({ data: [], timestamp: 0, rateLimitInfo: null, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 } }));
+
+    vi.advanceTimersByTime(CACHE_CLEANUP_INTERVAL_MS + 1);
+    clearOldCache(storage);
+    expect(storage.getItem('copilot_pr_cache_old_key')).toBeNull();
   });
 });
