@@ -1,7 +1,7 @@
 import type { Chart } from 'chart.js';
 import type { PullRequest, PRFilterStatus } from '../lib';
 
-type ChartStatic = typeof Chart;
+type ChartStatic = typeof import('chart.js').Chart;
 
 export interface AppState {
     rateLimitCountdownInterval: number | null;
