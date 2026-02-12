@@ -129,6 +129,56 @@ test.describe('Responsive Design', () => {
 });
 
 // ============================================================================
+// Accessibility Tests
+// ============================================================================
+
+test.describe('Accessibility', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+  });
+
+  test('should have skip link that is hidden by default and visible on focus', async ({ page }) => {
+    const skipLink = page.locator('a[href="#searchForm"]');
+
+    // Skip link should exist but be visually hidden (sr-only)
+    await expect(skipLink).toHaveCount(1);
+    const box = await skipLink.boundingBox();
+    // sr-only elements have effectively 0 visible dimensions
+    expect(box === null || box.width <= 1 || box.height <= 1).toBeTruthy();
+
+    // When focused, skip link should become visible
+    await skipLink.focus();
+    const focusedBox = await skipLink.boundingBox();
+    expect(focusedBox).not.toBeNull();
+    expect(focusedBox.width).toBeGreaterThan(1);
+    expect(focusedBox.height).toBeGreaterThan(1);
+  });
+
+  test('should have skip link pointing to searchForm', async ({ page }) => {
+    const skipLink = page.locator('a[href="#searchForm"]');
+    await expect(skipLink).toHaveAttribute('href', '#searchForm');
+    await expect(skipLink).toContainText(/skip/i);
+
+    // Verify the target element exists
+    const target = page.locator('#searchForm');
+    await expect(target).toHaveCount(1);
+  });
+
+  test('should have token input with aria-describedby pointing to description', async ({ page }) => {
+    const tokenInput = page.locator('#tokenInput');
+    await expect(tokenInput).toHaveAttribute('aria-describedby', 'tokenDescription');
+
+    // Verify the description element exists and has content
+    const description = page.locator('#tokenDescription');
+    await expect(description).toHaveCount(1);
+    const text = await description.textContent();
+    expect(text.length).toBeGreaterThan(0);
+  });
+});
+
+// ============================================================================
 // Loading State Tests
 // ============================================================================
 
