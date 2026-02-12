@@ -801,7 +801,9 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
             });
         }
 
-        prElement.innerHTML = prItemContainer.innerHTML;
+        while (prItemContainer.firstChild) {
+            prElement.appendChild(prItemContainer.firstChild);
+        }
         prList.appendChild(prElement);
     });
 
