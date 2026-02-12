@@ -296,6 +296,55 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
     await page.waitForTimeout(300);
     expect(openCalls.length).toBe(0);
   });
+
+  test('should render PR item without link semantics when html_url is null', async ({ page }) => {
+    const prs = [createPR({
+      number: 40,
+      title: 'No URL PR',
+      state: 'open',
+      html_url: null
+    })];
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForResults(page);
+
+    // PR item should NOT have role="link" when url is invalid
+    const linkItems = page.locator('#prList [role="link"]');
+    await expect(linkItems).toHaveCount(0);
+
+    // PR item should still be rendered
+    const prItems = page.locator('#prList > div');
+    await expect(prItems).toHaveCount(1);
+
+    // Should have aria-label indicating no link is available
+    const prItem = prItems.first();
+    await expect(prItem).toHaveAttribute('aria-label', 'Pull request (no link available): No URL PR');
+
+    // Should NOT have tabindex (not focusable as a link)
+    const tabindex = await prItem.getAttribute('tabindex');
+    expect(tabindex).toBeNull();
+
+    // Should NOT be clickable (no window.open call)
+    const openCalls = [];
+    await page.exposeFunction('__captureOpenNull', (url, target, features) => {
+      openCalls.push({ url, target, features });
+    });
+    await page.evaluate(() => {
+      window.open = (url, target, features) => {
+        window.__captureOpenNull(url, target, features);
+        return null;
+      };
+    });
+
+    await prItem.click();
+    await page.waitForTimeout(300);
+    expect(openCalls.length).toBe(0);
+
+    // Placeholder anchors with href="#" should be replaced with non-interactive spans
+    const placeholderAnchors = page.locator('#prList > div a[href="#"]');
+    await expect(placeholderAnchors).toHaveCount(0);
+  });
 });
 
 // ============================================================================
