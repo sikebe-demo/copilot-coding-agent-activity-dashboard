@@ -79,6 +79,9 @@ function initializeTheme(): void {
         document.documentElement.setAttribute('data-theme', 'dark');
     }
 
+    // Set initial aria-label reflecting current state
+    updateThemeToggleLabel();
+
     themeToggle?.addEventListener('click', toggleTheme);
 }
 
@@ -96,10 +99,25 @@ function toggleTheme(): void {
         localStorage.setItem('theme', 'dark');
     }
 
+    // Update theme toggle button label
+    updateThemeToggleLabel();
+
     // Update chart if it exists
     if (chartInstance) {
         updateChartTheme();
     }
+}
+
+function updateThemeToggleLabel(): void {
+    const themeToggle = document.getElementById('themeToggle');
+    if (!themeToggle) return;
+    const isDark = document.documentElement.classList.contains('dark');
+    themeToggle.setAttribute(
+        'aria-label',
+        isDark
+            ? 'Switch to light mode (currently dark mode)'
+            : 'Switch to dark mode (currently light mode)'
+    );
 }
 
 // Set default dates (last 30 days)
@@ -534,7 +552,10 @@ function displayResults(prs: PullRequest[], fromDate: string, toDate: string, al
 
     if (mergeRateValueEl) mergeRateValueEl.textContent = `${counts.mergeRate}%`;
     if (mergeRateTextEl) mergeRateTextEl.textContent = `${counts.mergeRate}%`;
-    if (mergeRateBarEl) mergeRateBarEl.style.width = `${counts.mergeRate}%`;
+    if (mergeRateBarEl) {
+        mergeRateBarEl.style.width = `${counts.mergeRate}%`;
+        mergeRateBarEl.setAttribute('aria-valuenow', String(counts.mergeRate));
+    }
 
     // Display chart with date range passed from form submission
     displayChart(prs, fromDate, toDate);
@@ -779,7 +800,7 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
                 openPR();
             });
             prElement.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     openPR();
                 }
@@ -846,6 +867,9 @@ function displayPagination(totalPages: number, totalItems: number): void {
     const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
     const endItem = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
 
+    const navEl = document.createElement('nav');
+    navEl.setAttribute('aria-label', 'PR list pagination');
+
     const paginationEl = document.createElement('div');
     paginationEl.className = 'flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700';
 
@@ -865,8 +889,9 @@ function displayPagination(totalPages: number, totalItems: number): void {
             ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
     }`;
+    prevButton.setAttribute('aria-label', 'Previous page');
     prevButton.innerHTML = `
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
             <polyline points="15 18 9 12 15 6"></polyline>
         </svg>
     `;
@@ -882,6 +907,7 @@ function displayPagination(totalPages: number, totalItems: number): void {
         if (page === '...') {
             const ellipsis = document.createElement('span');
             ellipsis.className = 'px-2 text-slate-400 dark:text-slate-600';
+            ellipsis.setAttribute('aria-hidden', 'true');
             ellipsis.textContent = '...';
             pageNumbers.appendChild(ellipsis);
         } else {
@@ -893,6 +919,10 @@ function displayPagination(totalPages: number, totalItems: number): void {
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`;
             pageButton.textContent = String(pageNum);
+            pageButton.setAttribute('aria-label', `Page ${pageNum}`);
+            if (pageNum === currentPage) {
+                pageButton.setAttribute('aria-current', 'page');
+            }
             pageButton.addEventListener('click', () => goToPage(pageNum));
             pageNumbers.appendChild(pageButton);
         }
@@ -905,8 +935,9 @@ function displayPagination(totalPages: number, totalItems: number): void {
             ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
     }`;
+    nextButton.setAttribute('aria-label', 'Next page');
     nextButton.innerHTML = `
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
             <polyline points="9 18 15 12 9 6"></polyline>
         </svg>
     `;
@@ -919,7 +950,8 @@ function displayPagination(totalPages: number, totalItems: number): void {
 
     paginationEl.appendChild(pageInfo);
     paginationEl.appendChild(navContainer);
-    paginationContainer.appendChild(paginationEl);
+    navEl.appendChild(paginationEl);
+    paginationContainer.appendChild(navEl);
 }
 
 function goToPage(page: number): void {
@@ -1013,6 +1045,27 @@ function showResults(): void {
     if (results) {
         results.classList.remove('hidden');
     }
+
+    // Announce results to screen readers
+    announceToScreenReader(`Results loaded. Found ${currentPRs.length} pull requests.`);
+}
+
+function announceToScreenReader(message: string): void {
+    let announcer = document.getElementById('sr-announcer');
+    if (!announcer) {
+        announcer = document.createElement('div');
+        announcer.id = 'sr-announcer';
+        announcer.setAttribute('role', 'status');
+        announcer.setAttribute('aria-live', 'polite');
+        announcer.setAttribute('aria-atomic', 'true');
+        announcer.className = 'sr-only';
+        document.body.appendChild(announcer);
+    }
+    // Clear then set to ensure re-announcement
+    announcer.textContent = '';
+    requestAnimationFrame(() => {
+        announcer!.textContent = message;
+    });
 }
 
 function hideResults(): void {
