@@ -716,3 +716,15 @@ export function generateEmptyListHtml(): string {
             </div>
         `;
 }
+
+export function generateFilteredEmptyListHtml(): string {
+    return `
+            <div class="text-center py-16">
+                <svg class="w-16 h-16 mx-auto mb-4 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+                <p class="text-slate-600 dark:text-slate-400">No PRs match the current filters</p>
+                <p class="text-sm text-slate-500 dark:text-slate-500 mt-1">Try adjusting your status filter or search text</p>
+            </div>
+        `;
+}

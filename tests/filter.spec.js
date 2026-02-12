@@ -1,12 +1,10 @@
 import { test, expect } from '@playwright/test';
 import {
-  createPR,
   createPRs,
   mockSearchAPI,
   submitSearch,
   waitForResults,
   getDaysAgoISO,
-  DEFAULT_TIMEOUT
 } from './helpers.js';
 
 // ============================================================================

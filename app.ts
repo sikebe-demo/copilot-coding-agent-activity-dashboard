@@ -26,6 +26,7 @@ import {
     filterPRs,
     generatePRItemHtml,
     generateEmptyListHtml,
+    generateFilteredEmptyListHtml,
     ITEMS_PER_PAGE,
 } from './lib';
 
@@ -202,16 +203,35 @@ function updateFilterButtonStyles(): void {
         'bg-slate-100', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-400', 'border-slate-200', 'dark:border-slate-700',
     ];
 
+    // Hover classes that should be removed when a button is active
+    const allHoverClasses = [
+        'hover:bg-green-50', 'dark:hover:bg-green-900/20', 'hover:text-green-700', 'dark:hover:text-green-300', 'hover:border-green-300', 'dark:hover:border-green-600',
+        'hover:bg-red-50', 'dark:hover:bg-red-900/20', 'hover:text-red-700', 'dark:hover:text-red-300', 'hover:border-red-300', 'dark:hover:border-red-600',
+        'hover:bg-blue-50', 'dark:hover:bg-blue-900/20', 'hover:text-blue-700', 'dark:hover:text-blue-300', 'hover:border-blue-300', 'dark:hover:border-blue-600',
+    ];
+
+    // Hover classes for inactive buttons per filter type
+    const hoverStyles: Record<string, string> = {
+        merged: 'hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-700 dark:hover:text-green-300 hover:border-green-300 dark:hover:border-green-600',
+        closed: 'hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-700 dark:hover:text-red-300 hover:border-red-300 dark:hover:border-red-600',
+        open: 'hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-300 hover:border-blue-300 dark:hover:border-blue-600',
+    };
+
     filterButtons.forEach((button) => {
         const filter = button.dataset.filter ?? '';
         const isActive = filter === activeStatusFilter;
 
-        // Remove all color-related classes
-        button.classList.remove(...allColorClasses);
+        // Remove all color-related classes and hover classes
+        button.classList.remove(...allColorClasses, ...allHoverClasses);
 
         // Add appropriate classes
         const classes = isActive ? (activeStyles[filter as PRFilterStatus] ?? inactiveStyle) : inactiveStyle;
         button.classList.add(...classes.split(' '));
+
+        // Re-add hover classes only for inactive buttons
+        if (!isActive && hoverStyles[filter]) {
+            button.classList.add(...hoverStyles[filter].split(' '));
+        }
 
         // Set aria-pressed for accessibility
         button.setAttribute('aria-pressed', String(isActive));
@@ -688,7 +708,8 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
     prList.innerHTML = '';
 
     if (currentPRs.length === 0) {
-        prList.innerHTML = generateEmptyListHtml();
+        const isFiltered = activeStatusFilter !== 'all' || activeSearchText !== '';
+        prList.innerHTML = isFiltered ? generateFilteredEmptyListHtml() : generateEmptyListHtml();
         displayPagination(0, 0);
         return;
     }
