@@ -676,12 +676,34 @@ export function getPRStatus(pr: PullRequest): keyof StatusConfigMap {
 /**
  * Generates the inner HTML for a single PR list item.
  * Returns a pure HTML string with no DOM dependencies.
+ *
+ * @param isInteractive When true, renders hover/cursor classes on the external link
+ *   and hover color classes on the title. When false, omits them.
  */
-export function generatePRItemHtml(pr: PullRequest): string {
+export function generatePRItemHtml(pr: PullRequest, isInteractive = true): string {
     const createdDate = new Date(pr.created_at).toLocaleDateString('en-US');
     const status = getPRStatus(pr);
     const config = PR_STATUS_CONFIG[status];
     const prNumberDisplay = formatPRNumber(pr.number);
+
+    const sanitizedUrl = sanitizeUrl(pr.html_url);
+    const hasValidUrl = sanitizedUrl !== '#';
+
+    // External link: render as span (not anchor) to avoid nested link issues
+    const externalLinkClasses = isInteractive
+        ? 'shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer'
+        : 'shrink-0 p-1.5 rounded-lg transition-colors';
+
+    const externalLink = `
+                <span class="${externalLinkClasses}"${hasValidUrl ? ' title="Open in GitHub"' : ''}>
+                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                </span>`;
+
+    const titleHoverClasses = isInteractive ? ' hover:text-indigo-600 dark:hover:text-indigo-400' : '';
 
     return `
             <div class="flex items-start justify-between gap-4 mb-3">
@@ -692,17 +714,9 @@ export function generatePRItemHtml(pr: PullRequest): string {
                     </span>
                     ${prNumberDisplay ? `<span class="text-xs text-slate-600 dark:text-slate-400">${prNumberDisplay}</span>` : ''}
                 </div>
-                <a href="${sanitizeUrl(pr.html_url)}" target="_blank" rel="noopener noreferrer"
-                   class="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                   title="Open in GitHub">
-                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                        <polyline points="15 3 21 3 21 9"></polyline>
-                        <line x1="10" y1="14" x2="21" y2="3"></line>
-                    </svg>
-                </a>
+                ${externalLink}
             </div>
-            <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8 transition-colors">${escapeHtml(pr.title)}</h3>
+            <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8 transition-colors${titleHoverClasses}">${escapeHtml(pr.title)}</h3>
             <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
                 <span class="flex items-center gap-1">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

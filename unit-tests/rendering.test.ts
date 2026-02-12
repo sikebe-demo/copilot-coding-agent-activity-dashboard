@@ -92,8 +92,9 @@ describe('generatePRItemHtml', () => {
     it('should sanitize javascript: URLs in html_url', () => {
         const pr = createTestPR({ html_url: 'javascript:alert("XSS")' });
         const html = generatePRItemHtml(pr);
-        expect(html).toContain('href="#"');
         expect(html).not.toContain('javascript:');
+        // Invalid URL should not show "Open in GitHub" title
+        expect(html).not.toContain('title="Open in GitHub"');
     });
 
     it('should display correct PR information', () => {
@@ -109,16 +110,20 @@ describe('generatePRItemHtml', () => {
         expect(html).toContain('Merged');
     });
 
-    it('should include target="_blank" on PR links', () => {
+    it('should render external link as span with title for valid URLs', () => {
         const pr = createTestPR();
         const html = generatePRItemHtml(pr);
-        expect(html).toContain('target="_blank"');
+        expect(html).toContain('title="Open in GitHub"');
+        // External link rendered as span, not anchor
+        expect(html).not.toContain('<a ');
     });
 
-    it('should handle null URL', () => {
+    it('should handle invalid URL by omitting title attribute', () => {
         const pr = createTestPR({ html_url: 'not-a-valid-url' as string });
         const html = generatePRItemHtml(pr);
-        expect(html).toContain('href="#"');
+        expect(html).not.toContain('title="Open in GitHub"');
+        // Uses span instead of anchor for external link
+        expect(html).not.toContain('<a ');
     });
 
     it('should handle PR with null user showing "unknown"', () => {
@@ -158,6 +163,39 @@ describe('generatePRItemHtml', () => {
         const pr = createTestPR({ number: 0 });
         const html = generatePRItemHtml(pr);
         expect(html).not.toContain('#0');
+    });
+
+    it('should include hover classes on title when isInteractive is true', () => {
+        const pr = createTestPR();
+        const html = generatePRItemHtml(pr, true);
+        expect(html).toContain('hover:text-indigo-600');
+        expect(html).toContain('dark:hover:text-indigo-400');
+    });
+
+    it('should not include hover classes on title when isInteractive is false', () => {
+        const pr = createTestPR();
+        const html = generatePRItemHtml(pr, false);
+        expect(html).not.toContain('hover:text-indigo-600');
+        expect(html).not.toContain('dark:hover:text-indigo-400');
+    });
+
+    it('should include cursor-pointer on external link when isInteractive is true', () => {
+        const pr = createTestPR();
+        const html = generatePRItemHtml(pr, true);
+        expect(html).toContain('cursor-pointer');
+    });
+
+    it('should not include cursor-pointer on external link when isInteractive is false', () => {
+        const pr = createTestPR();
+        const html = generatePRItemHtml(pr, false);
+        expect(html).not.toContain('cursor-pointer');
+    });
+
+    it('should default isInteractive to true', () => {
+        const pr = createTestPR();
+        const defaultHtml = generatePRItemHtml(pr);
+        const explicitHtml = generatePRItemHtml(pr, true);
+        expect(defaultHtml).toBe(explicitHtml);
     });
 });
 

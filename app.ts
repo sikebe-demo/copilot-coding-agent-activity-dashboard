@@ -195,6 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
     initializeForm();
     initializeFilters();
+    initializePRListEvents();
     setDefaultDates();
 });
 
@@ -306,6 +307,34 @@ function initializeFilters(): void {
             state.activeSearchText = dom.prSearchInput?.value ?? '';
             applyFilters();
         }, 300);
+    });
+}
+
+function initializePRListEvents(): void {
+    if (!dom.prList) return;
+
+    dom.prList.addEventListener('click', (e) => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        // Don't navigate if user clicked on an inner anchor
+        if (target.closest('a')) return;
+        const prCard = target.closest('[data-url]') as HTMLElement | null;
+        if (prCard) {
+            const url = prCard.getAttribute('data-url');
+            if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        }
+    });
+
+    dom.prList.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        const prCard = target.closest('[data-url]') as HTMLElement | null;
+        if (prCard) {
+            e.preventDefault();
+            const url = prCard.getAttribute('data-url');
+            if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        }
     });
 }
 
@@ -855,6 +884,8 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
     const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, state.currentPRs.length);
     const paginatedPRs = state.currentPRs.slice(startIndex, endIndex);
 
+    const fragment = document.createDocumentFragment();
+
     paginatedPRs.forEach((pr) => {
         const prElement = document.createElement('div');
         const sanitizedUrl = sanitizeUrl(pr.html_url);
@@ -872,70 +903,15 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
             prElement.setAttribute('role', 'link');
             prElement.setAttribute('aria-label', `Open pull request: ${pr.title || 'Untitled'}`);
             prElement.setAttribute('tabindex', '0');
-
-            const openPR = () => {
-                const url = prElement.getAttribute('data-url');
-                if (url) {
-                    window.open(url, '_blank', 'noopener,noreferrer');
-                }
-            };
-
-            prElement.addEventListener('click', (e) => {
-                // Don't navigate if user clicked on the existing icon link itself
-                const target = e.target;
-                if (target instanceof Element && target.closest('a')) return;
-                openPR();
-            });
-            prElement.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openPR();
-                }
-            });
         } else {
             prElement.setAttribute('aria-label', `Pull request (no link available): ${pr.title || 'Untitled'}`);
         }
 
-        // Set PR item HTML directly on the element
-        prElement.innerHTML = generatePRItemHtml(pr);
-
-        if (hasValidUrl) {
-            // Add hover color styles to the PR title only when the item is interactive
-            const titleEl = prElement.querySelector('h3');
-            if (titleEl) {
-                titleEl.classList.add('hover:text-indigo-600', 'dark:hover:text-indigo-400');
-            }
-            // Replace inner anchors with non-interactive spans to avoid nested link semantics
-            const innerLinks = prElement.querySelectorAll('a');
-            innerLinks.forEach((anchor) => {
-                const span = document.createElement('span');
-                span.className = anchor.className;
-                span.innerHTML = anchor.innerHTML;
-                anchor.replaceWith(span);
-            });
-        } else {
-            // Remove or neutralize any anchors that point to "#" so they are not focusable fake links
-            const placeholderLinks = prElement.querySelectorAll('a[href="#"]');
-            placeholderLinks.forEach((anchor) => {
-                const span = document.createElement('span');
-                // Copy only non-interactive classes so the icon/text doesn't look clickable
-                const filteredClasses = anchor.className
-                    .split(/\s+/)
-                    .filter(
-                        (cls) =>
-                            cls &&
-                            !cls.startsWith('cursor-') &&
-                            !cls.startsWith('hover:') &&
-                            !cls.startsWith('focus:')
-                    )
-                    .join(' ');
-                span.className = filteredClasses;
-                span.innerHTML = anchor.innerHTML;
-                anchor.replaceWith(span);
-            });
-        }
-        prList.appendChild(prElement);
+        prElement.innerHTML = generatePRItemHtml(pr, hasValidUrl);
+        fragment.appendChild(prElement);
     });
+
+    prList.appendChild(fragment);
 
     // Display pagination
     displayPagination(totalPages, state.currentPRs.length);
@@ -1038,7 +1014,10 @@ function displayPagination(totalPages: number, totalItems: number): void {
     paginationEl.appendChild(pageInfo);
     paginationEl.appendChild(navContainer);
     navEl.appendChild(paginationEl);
-    paginationContainer.appendChild(navEl);
+
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(navEl);
+    paginationContainer.appendChild(fragment);
 }
 
 function goToPage(page: number): void {
