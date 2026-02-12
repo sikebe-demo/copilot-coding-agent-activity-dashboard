@@ -764,24 +764,26 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
             prElement.setAttribute('aria-label', `Pull request (no link available): ${pr.title || 'Untitled'}`);
         }
 
-        // Generate PR item HTML and remove any non-functional "#" links when no valid URL exists
-        const prItemContainer = document.createElement('div');
-        prItemContainer.innerHTML = generatePRItemHtml(pr);
+        // Set PR item HTML directly on the element
+        prElement.innerHTML = generatePRItemHtml(pr);
 
         if (hasValidUrl) {
             // Add hover color styles to the PR title only when the item is interactive
-            const titleEl = prItemContainer.querySelector('h3');
+            const titleEl = prElement.querySelector('h3');
             if (titleEl) {
                 titleEl.classList.add('hover:text-indigo-600', 'dark:hover:text-indigo-400');
             }
-            // Set inner anchor to tabindex="-1" so only the outer container is focusable
-            const innerLinks = prItemContainer.querySelectorAll('a');
+            // Replace inner anchors with non-interactive spans to avoid nested link semantics
+            const innerLinks = prElement.querySelectorAll('a');
             innerLinks.forEach((anchor) => {
-                anchor.setAttribute('tabindex', '-1');
+                const span = document.createElement('span');
+                span.className = anchor.className;
+                span.innerHTML = anchor.innerHTML;
+                anchor.replaceWith(span);
             });
         } else {
             // Remove or neutralize any anchors that point to "#" so they are not focusable fake links
-            const placeholderLinks = prItemContainer.querySelectorAll('a[href="#"]');
+            const placeholderLinks = prElement.querySelectorAll('a[href="#"]');
             placeholderLinks.forEach((anchor) => {
                 const span = document.createElement('span');
                 // Copy only non-interactive classes so the icon/text doesn't look clickable
@@ -799,10 +801,6 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
                 span.innerHTML = anchor.innerHTML;
                 anchor.replaceWith(span);
             });
-        }
-
-        while (prItemContainer.firstChild) {
-            prElement.appendChild(prItemContainer.firstChild);
         }
         prList.appendChild(prElement);
     });

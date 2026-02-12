@@ -210,7 +210,7 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
     expect(openCalls[0].features).toBe('noopener,noreferrer');
   });
 
-  test('should ignore container click handler when clicking the existing icon link', async ({ page }) => {
+  test('should replace inner anchors with spans to avoid nested link semantics', async ({ page }) => {
     const prs = [createPR({
       number: 10,
       title: 'Add feature',
@@ -222,30 +222,13 @@ test.describe('PR Item Click and Keyboard Interaction', () => {
     await submitSearch(page);
     await waitForResults(page);
 
-    // Intercept window.open
-    const openCalls = [];
-    await page.exposeFunction('__captureOpen2', (url) => {
-      openCalls.push(url);
-    });
-    await page.evaluate(() => {
-      window.open = (url) => {
-        window.__captureOpen2(url);
-        return null;
-      };
-    });
+    // Verify that inside a role="link" container, there are no nested <a> elements
+    const innerAnchors = page.locator('#prList [role="link"] a');
+    await expect(innerAnchors).toHaveCount(0);
 
-    // Click the anchor link inside the PR item, not the item itself
-    const anchor = page.locator('#prList [role="link"] a').first();
-    await expect(anchor).toBeVisible();
-    // Prevent actual navigation
-    await page.evaluate(() => {
-      document.querySelectorAll('#prList [role="link"] a').forEach(a => {
-        a.addEventListener('click', e => e.preventDefault());
-      });
-    });
-    await anchor.click();
-    // window.open should NOT have been called because the click handler checks for <a>
-    expect(openCalls.length).toBe(0);
+    // Verify that the icon is rendered as a <span> instead
+    const iconSpan = page.locator('#prList [role="link"] span svg').first();
+    await expect(iconSpan).toBeVisible();
   });
 
   test('should open PR when pressing Enter on a focused PR item', async ({ page }) => {
