@@ -159,7 +159,7 @@ export function parseRepoInput(repoInput: string): { owner: string; repo: string
 }
 
 /**
- * Validates that fromDate is not after toDate.
+ * Validates that date strings parse to valid dates and that fromDate is not after toDate.
  */
 export function validateDateRange(fromDate: string, toDate: string): string | null {
     const from = new Date(fromDate);
@@ -194,6 +194,18 @@ function isValidAllPRCounts(value: unknown): value is AllPRCounts {
     );
 }
 
+function isValidRateLimitInfo(value: unknown): value is RateLimitInfo {
+    if (value === null) return true;
+    if (typeof value !== 'object') return false;
+    const obj = value as Record<string, unknown>;
+    return (
+        typeof obj.limit === 'number' &&
+        typeof obj.remaining === 'number' &&
+        typeof obj.reset === 'number' &&
+        typeof obj.used === 'number'
+    );
+}
+
 /**
  * Type guard that validates a parsed object conforms to the CacheEntry schema.
  */
@@ -204,16 +216,7 @@ export function isCacheEntry(value: unknown): value is CacheEntry {
     if (!Array.isArray(obj.data)) return false;
     if (typeof obj.timestamp !== 'number') return false;
     if (!isValidAllPRCounts(obj.allPRCounts)) return false;
-
-    // rateLimitInfo must be null or an object
-    const rateLimitInfo = obj.rateLimitInfo;
-    if (
-        rateLimitInfo !== undefined &&
-        rateLimitInfo !== null &&
-        typeof rateLimitInfo !== 'object'
-    ) {
-        return false;
-    }
+    if (!isValidRateLimitInfo(obj.rateLimitInfo)) return false;
 
     return true;
 }

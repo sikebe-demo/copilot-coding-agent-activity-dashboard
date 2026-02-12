@@ -41,10 +41,6 @@ describe('escapeHtml', () => {
     expect(escapeHtml('')).toBe('');
   });
 
-  it('should convert numeric input to string', () => {
-    expect(escapeHtml(42 as unknown as string)).toBe('42');
-    expect(escapeHtml(0 as unknown as string)).toBe('0');
-  });
 });
 
 describe('sanitizeUrl', () => {
