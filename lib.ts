@@ -183,18 +183,39 @@ export function getCacheKey(owner: string, repo: string, fromDate: string, toDat
     return `${CACHE_KEY_PREFIX}${CACHE_VERSION}_${paramsKey}${authSuffix}`;
 }
 
+function isValidAllPRCounts(value: unknown): value is AllPRCounts {
+    if (typeof value !== 'object' || value === null) return false;
+    const obj = value as Record<string, unknown>;
+    return (
+        typeof obj.total === 'number' &&
+        typeof obj.merged === 'number' &&
+        typeof obj.closed === 'number' &&
+        typeof obj.open === 'number'
+    );
+}
+
 /**
  * Type guard that validates a parsed object conforms to the CacheEntry schema.
  */
 export function isCacheEntry(value: unknown): value is CacheEntry {
     if (typeof value !== 'object' || value === null) return false;
     const obj = value as Record<string, unknown>;
-    return (
-        Array.isArray(obj.data) &&
-        typeof obj.timestamp === 'number' &&
-        typeof obj.allPRCounts === 'object' &&
-        obj.allPRCounts !== null
-    );
+
+    if (!Array.isArray(obj.data)) return false;
+    if (typeof obj.timestamp !== 'number') return false;
+    if (!isValidAllPRCounts(obj.allPRCounts)) return false;
+
+    // rateLimitInfo must be null or an object
+    const rateLimitInfo = obj.rateLimitInfo;
+    if (
+        rateLimitInfo !== undefined &&
+        rateLimitInfo !== null &&
+        typeof rateLimitInfo !== 'object'
+    ) {
+        return false;
+    }
+
+    return true;
 }
 
 export function getFromCache(cacheKey: string, storage: Storage = localStorage): CacheEntry | null {

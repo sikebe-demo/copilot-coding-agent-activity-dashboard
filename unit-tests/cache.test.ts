@@ -289,6 +289,26 @@ describe('isCacheEntry', () => {
   it('should return false when allPRCounts is missing', () => {
     expect(isCacheEntry({ data: [], timestamp: 1 })).toBe(false);
   });
+
+  it('should return false when allPRCounts has missing numeric fields', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: {} })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1 } })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0 } })).toBe(false);
+  });
+
+  it('should return false when allPRCounts has non-numeric fields', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 'x', merged: 0, closed: 0, open: 0 } })).toBe(false);
+  });
+
+  it('should return false when rateLimitInfo is a non-object non-null value', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }, rateLimitInfo: 'invalid' })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }, rateLimitInfo: 42 })).toBe(false);
+  });
+
+  it('should accept valid rateLimitInfo as object or null', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: null })).toBe(true);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: { limit: 60, remaining: 55, reset: 123456 } })).toBe(true);
+  });
 });
 
 describe('clearOldCache throttle', () => {
