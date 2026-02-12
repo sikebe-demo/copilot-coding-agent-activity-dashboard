@@ -586,6 +586,38 @@ export function sortPRsByDate(prs: PullRequest[]): PullRequest[] {
     );
 }
 
+/**
+ * Filter type for PR status: 'all' shows everything, others match the PR status.
+ */
+export type PRFilterStatus = 'all' | keyof StatusConfigMap;
+
+/**
+ * Filters PRs by status and/or search text.
+ * Pure function with no DOM dependencies.
+ */
+export function filterPRs(
+    prs: PullRequest[],
+    statusFilter: PRFilterStatus,
+    searchText: string
+): PullRequest[] {
+    let filtered = prs;
+
+    // Filter by status
+    if (statusFilter !== 'all') {
+        filtered = filtered.filter(pr => getPRStatus(pr) === statusFilter);
+    }
+
+    // Filter by search text (case-insensitive title match)
+    const query = searchText.trim().toLowerCase();
+    if (query) {
+        filtered = filtered.filter(pr =>
+            (pr.title ?? '').toLowerCase().includes(query)
+        );
+    }
+
+    return filtered;
+}
+
 // ============================================================================
 // PR List Rendering (Pure HTML generation)
 // ============================================================================
@@ -681,6 +713,21 @@ export function generateEmptyListHtml(): string {
                     <line x1="12" y1="16" x2="12.01" y2="16"></line>
                 </svg>
                 <p class="text-slate-600 dark:text-slate-400">No PRs created by Copilot Coding Agent found</p>
+            </div>
+        `;
+}
+
+/**
+ * Generates HTML for the empty PR list state when filters/search yield no results.
+ */
+export function generateFilteredEmptyListHtml(): string {
+    return `
+            <div class="text-center py-16">
+                <svg class="w-16 h-16 mx-auto mb-4 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+                <p class="text-slate-600 dark:text-slate-400">No PRs match the current filters</p>
+                <p class="text-sm text-slate-500 dark:text-slate-500 mt-1">Try adjusting your status filter or search text</p>
             </div>
         `;
 }

@@ -3,6 +3,7 @@ import {
     getPRStatus,
     generatePRItemHtml,
     generateEmptyListHtml,
+    generateFilteredEmptyListHtml,
     PR_STATUS_CONFIG,
 } from '../lib';
 import type { PullRequest } from '../lib';
@@ -166,6 +167,27 @@ describe('generateEmptyListHtml', () => {
 
     it('should return non-empty HTML string', () => {
         const html = generateEmptyListHtml();
+        expect(html.length).toBeGreaterThan(0);
+    });
+});
+
+// ============================================================================
+// generateFilteredEmptyListHtml
+// ============================================================================
+
+describe('generateFilteredEmptyListHtml', () => {
+    it('should contain "No PRs match the current filters" text', () => {
+        const html = generateFilteredEmptyListHtml();
+        expect(html).toContain('No PRs match the current filters');
+    });
+
+    it('should contain guidance to adjust filters', () => {
+        const html = generateFilteredEmptyListHtml();
+        expect(html).toContain('Try adjusting your status filter or search text');
+    });
+
+    it('should return non-empty HTML string', () => {
+        const html = generateFilteredEmptyListHtml();
         expect(html.length).toBeGreaterThan(0);
     });
 });
