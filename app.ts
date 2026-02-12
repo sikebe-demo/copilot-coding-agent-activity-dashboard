@@ -564,6 +564,11 @@ function displayChart(prs: PullRequest[], fromDate: string, toDate: string): voi
         chartContainer.appendChild(canvas);
     }
 
+    // Accessibility: provide role, label, and text fallback for screen readers
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', `Daily PR trend chart showing ${prs.length} pull requests from ${fromDate} to ${toDate}`);
+    canvas.textContent = `Chart: Daily PR trend for ${prs.length} pull requests (${fromDate} to ${toDate}). Displays merged, closed, and open PRs per day.`;
+
     // Destroy previous chart if exists
     if (chartInstance) {
         chartInstance.destroy();
