@@ -205,6 +205,7 @@ function updateFilterButtonStyles(): void {
 
     // Hover classes that should be removed when a button is active
     const allHoverClasses = [
+        'hover:bg-indigo-50', 'dark:hover:bg-indigo-900/20', 'hover:text-indigo-700', 'dark:hover:text-indigo-300', 'hover:border-indigo-300', 'dark:hover:border-indigo-500',
         'hover:bg-green-50', 'dark:hover:bg-green-900/20', 'hover:text-green-700', 'dark:hover:text-green-300', 'hover:border-green-300', 'dark:hover:border-green-600',
         'hover:bg-red-50', 'dark:hover:bg-red-900/20', 'hover:text-red-700', 'dark:hover:text-red-300', 'hover:border-red-300', 'dark:hover:border-red-600',
         'hover:bg-blue-50', 'dark:hover:bg-blue-900/20', 'hover:text-blue-700', 'dark:hover:text-blue-300', 'hover:border-blue-300', 'dark:hover:border-blue-600',
@@ -212,6 +213,7 @@ function updateFilterButtonStyles(): void {
 
     // Hover classes for inactive buttons per filter type
     const hoverStyles: Record<string, string> = {
+        all: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 dark:hover:border-indigo-500',
         merged: 'hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-700 dark:hover:text-green-300 hover:border-green-300 dark:hover:border-green-600',
         closed: 'hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-700 dark:hover:text-red-300 hover:border-red-300 dark:hover:border-red-600',
         open: 'hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-300 hover:border-blue-300 dark:hover:border-blue-600',
