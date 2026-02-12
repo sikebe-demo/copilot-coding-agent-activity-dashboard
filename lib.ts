@@ -679,7 +679,7 @@ export function generatePRItemHtml(pr: PullRequest): string {
                     </svg>
                 </a>
             </div>
-            <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8">${escapeHtml(pr.title)}</h3>
+            <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-2 pr-8 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">${escapeHtml(pr.title)}</h3>
             <div class="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
                 <span class="flex items-center gap-1">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

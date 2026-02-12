@@ -724,7 +724,23 @@ function displayPRList(prs: PullRequest[], resetPage = true): void {
 
     paginatedPRs.forEach((pr) => {
         const prElement = document.createElement('div');
-        prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400';
+        prElement.className = 'p-4 rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 cursor-pointer transition-all hover:shadow-md';
+        prElement.setAttribute('data-url', pr.html_url ?? '');
+        prElement.setAttribute('role', 'link');
+        prElement.setAttribute('tabindex', '0');
+        prElement.addEventListener('click', (e) => {
+            // Don't navigate if user clicked on the existing icon link itself
+            if ((e.target as HTMLElement).closest('a')) return;
+            const url = prElement.getAttribute('data-url');
+            if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        });
+        prElement.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                const url = prElement.getAttribute('data-url');
+                if (url) window.open(url, '_blank', 'noopener,noreferrer');
+            }
+        });
         prElement.innerHTML = generatePRItemHtml(pr);
         prList.appendChild(prElement);
     });
