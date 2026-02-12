@@ -85,7 +85,7 @@ export function initializePRListEvents(): void {
     });
 
     dom.prList.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter') return;
+        if (e.key !== 'Enter' && e.key !== ' ') return;
         const target = e.target;
         if (!(target instanceof Element)) return;
         const prCard = target.closest('[data-url]') as HTMLElement | null;
