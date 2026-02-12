@@ -194,7 +194,7 @@ function isValidAllPRCounts(value: unknown): value is AllPRCounts {
     );
 }
 
-function isValidRateLimitInfo(value: unknown): value is RateLimitInfo {
+function isValidRateLimitInfo(value: unknown): value is RateLimitInfo | null {
     if (value === null) return true;
     if (typeof value !== 'object') return false;
     const obj = value as Record<string, unknown>;
