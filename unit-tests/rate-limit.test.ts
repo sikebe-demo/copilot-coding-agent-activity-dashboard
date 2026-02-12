@@ -157,6 +157,14 @@ describe('formatCountdown', () => {
     const result = formatCountdown(resetTimestamp);
     expect(result).toBe('1:05');
   });
+
+  it("should return '0:00' when reset timestamp equals current time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00.000Z'));
+    const nowSec = Date.now() / 1000;
+    const result = formatCountdown(nowSec);
+    expect(result).toBe('0:00');
+  });
 });
 
 describe('getRateLimitStatus', () => {

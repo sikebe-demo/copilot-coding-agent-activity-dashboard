@@ -60,6 +60,25 @@ test.describe('API Errors', () => {
     await expect(errorElement).toHaveAttribute('role', 'alert');
     await expect(errorElement).toHaveAttribute('aria-live', 'assertive');
   });
+
+  test('should show error when API returns incomplete_results: true', async ({ page }) => {
+    await page.route('https://api.github.com/search/issues**', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: { ...createRateLimitHeaders() },
+        body: JSON.stringify({
+          total_count: 5,
+          incomplete_results: true,
+          items: []
+        })
+      });
+    });
+
+    await submitSearch(page);
+    await waitForError(page);
+
+    await expect(page.locator('#errorMessage')).toContainText(/incomplete/i);
+  });
 });
 
 // ============================================================================

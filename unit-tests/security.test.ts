@@ -75,6 +75,21 @@ describe('sanitizeUrl', () => {
   it('should handle empty string', () => {
     expect(sanitizeUrl('')).toBe('#');
   });
+
+  it('should allow github.com URLs with query parameters', () => {
+    const url = 'https://github.com/test/repo/pull/42?diff=unified';
+    expect(sanitizeUrl(url)).toBe(url);
+  });
+
+  it('should allow github.com URLs with fragment', () => {
+    const url = 'https://github.com/test/repo/pull/42#issuecomment-123';
+    expect(sanitizeUrl(url)).toBe(url);
+  });
+
+  it('should allow github.com URLs with both query and fragment', () => {
+    const url = 'https://github.com/test/repo/pull/42?diff=unified#discussion_r123';
+    expect(sanitizeUrl(url)).toBe(url);
+  });
 });
 
 describe('formatPRNumber', () => {

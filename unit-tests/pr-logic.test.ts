@@ -154,6 +154,17 @@ describe('prepareChartData', () => {
     const result = prepareChartData([], '2025-01-01', '2025-12-31');
     expect(result.dates).toHaveLength(365);
   });
+
+  it('should use PR dates when fromDate and toDate are empty strings', () => {
+    const prs = [
+      createTestPR({ created_at: '2026-01-03T10:00:00Z', state: 'closed', merged_at: '2026-01-04T00:00:00Z' }),
+      createTestPR({ created_at: '2026-01-05T10:00:00Z', state: 'open', merged_at: null }),
+    ];
+    const result = prepareChartData(prs, '', '');
+    expect(result.dates).toEqual(['2026-01-03', '2026-01-05']);
+    expect(result.mergedData).toEqual([1, 0]);
+    expect(result.openData).toEqual([0, 1]);
+  });
 });
 
 // ============================================================================
@@ -196,6 +207,16 @@ describe('getPageNumbersToShow', () => {
     expect(result[result.length - 1]).toBe(10);
     expect(result).toContain(1);
     expect(result).toContain(10);
+  });
+
+  it('should return empty array when total=0', () => {
+    const result = getPageNumbersToShow(1, 0);
+    expect(result).toEqual([]);
+  });
+
+  it('should return [1] when total=1', () => {
+    const result = getPageNumbersToShow(1, 1);
+    expect(result).toEqual([1]);
   });
 });
 
@@ -364,6 +385,13 @@ describe('adjustClosedCount', () => {
     const result = adjustClosedCount(counts, succeeded);
     expect(result.closed).toBe(5);
     expect(result.merged).toBe(3);
+  });
+
+  it('should clamp to 0 when merged count exceeds closed count', () => {
+    const counts: AllPRCounts = { total: 10, merged: 8, closed: 5, open: 2 };
+    const succeeded = new Set(['closed', 'merged']);
+    const result = adjustClosedCount(counts, succeeded);
+    expect(result.closed).toBe(0); // Math.max(0, 5 - 8) = 0
   });
 });
 

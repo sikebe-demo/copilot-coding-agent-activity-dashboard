@@ -161,7 +161,12 @@ export function parseRepoInput(repoInput: string): { owner: string; repo: string
  * Validates that fromDate is not after toDate.
  */
 export function validateDateRange(fromDate: string, toDate: string): string | null {
-    if (new Date(fromDate) > new Date(toDate)) {
+    const from = new Date(fromDate);
+    const to = new Date(toDate);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+        return 'Invalid date format';
+    }
+    if (from > to) {
         return 'Start date must be before end date';
     }
     return null;

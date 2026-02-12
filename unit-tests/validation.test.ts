@@ -110,4 +110,19 @@ describe('validateDateRange', () => {
     const result = validateDateRange('2024-02-01', '2024-01-01');
     expect(result).toBe('Start date must be before end date');
   });
+
+  it('should return error for invalid fromDate string', () => {
+    const result = validateDateRange('invalid', '2024-01-31');
+    expect(result).toBe('Invalid date format');
+  });
+
+  it('should return error for invalid toDate string', () => {
+    const result = validateDateRange('2024-01-01', 'not-a-date');
+    expect(result).toBe('Invalid date format');
+  });
+
+  it('should return error when both dates are invalid', () => {
+    const result = validateDateRange('foo', 'bar');
+    expect(result).toBe('Invalid date format');
+  });
 });
