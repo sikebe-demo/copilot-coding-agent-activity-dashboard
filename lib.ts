@@ -902,7 +902,9 @@ export interface RateLimitDisplayParams {
  */
 export function generateRateLimitHtml(params: RateLimitDisplayParams): string {
     const { info, fromCache, resetCountdown } = params;
-    const usagePercent = Math.round((info.used / info.limit) * 100);
+    const usagePercent = info.limit > 0
+        ? Math.max(0, Math.min(100, Math.round((info.used / info.limit) * 100)))
+        : 0;
     const { statusText, isAuthenticated } = getRateLimitStatus(info.remaining, info.limit);
 
     const authStatusBadge = isAuthenticated

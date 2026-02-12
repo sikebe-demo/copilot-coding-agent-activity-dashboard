@@ -78,7 +78,13 @@ export async function displayChart(prs: PullRequest[], fromDate: string, toDate:
     state.chartInstance = new ChartJS(canvas, {
         type: 'bar',
         data: {
-            labels: dates.map(date => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+            labels: dates.map(date =>
+                new Date(date).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    timeZone: 'UTC',
+                }),
+            ),
             datasets: [
                 {
                     label: 'Merged',

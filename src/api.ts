@@ -242,6 +242,10 @@ async function fetchAllPRCounts(
 
         return { counts, rateLimitInfo };
     } catch (error) {
+        // Propagate aborts so callers can avoid caching/displaying incomplete data
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw error;
+        }
         console.warn('Error fetching all PR counts:', error);
         return { counts: defaultCounts, rateLimitInfo };
     }
