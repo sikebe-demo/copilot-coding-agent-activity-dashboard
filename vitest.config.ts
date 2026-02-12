@@ -6,7 +6,7 @@ export default defineConfig({
     globals: true,
     coverage: {
       provider: 'v8',
-      include: ['lib.ts'],
+      include: ['lib.ts', 'src/**/*.ts'],
       thresholds: {
         statements: 80,
         branches: 75,

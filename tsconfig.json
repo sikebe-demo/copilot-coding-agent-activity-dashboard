@@ -17,5 +17,6 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["*.ts"]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "unit-tests", "tests"]
 }
