@@ -564,6 +564,30 @@ function displayChart(prs: PullRequest[], fromDate: string, toDate: string): voi
         chartContainer.appendChild(canvas);
     }
 
+    // Accessibility: provide role, label, and detailed description for screen readers
+    const descriptionId = 'pr-chart-description';
+    let descriptionElement = chartContainer.querySelector<HTMLDivElement>('#' + descriptionId);
+    if (!descriptionElement) {
+        descriptionElement = document.createElement('div');
+        descriptionElement.id = descriptionId;
+        // Visually hidden but available to screen readers
+        descriptionElement.style.position = 'absolute';
+        descriptionElement.style.width = '1px';
+        descriptionElement.style.height = '1px';
+        descriptionElement.style.padding = '0';
+        descriptionElement.style.margin = '-1px';
+        descriptionElement.style.overflow = 'hidden';
+        descriptionElement.style.clip = 'rect(0, 0, 0, 0)';
+        descriptionElement.style.whiteSpace = 'nowrap';
+        descriptionElement.style.border = '0';
+        chartContainer.appendChild(descriptionElement);
+    }
+    descriptionElement.textContent = `Chart: Daily PR trend for ${prs.length} pull requests from ${fromDate} to ${toDate}. Displays daily counts of merged, closed, and open pull requests.`;
+
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', `Daily PR trend chart showing ${prs.length} pull requests from ${fromDate} to ${toDate}`);
+    canvas.setAttribute('aria-describedby', descriptionId);
+
     // Destroy previous chart if exists
     if (chartInstance) {
         chartInstance.destroy();

@@ -384,4 +384,24 @@ test.describe('Chart', () => {
     await expect(canvas).toBeVisible();
   });
 
+  test('should have accessible chart canvas with role, aria-label, and aria-describedby', async ({ page }) => {
+    const prs = createPRs([
+      { title: 'Accessible PR', state: 'closed', merged_at: getDaysAgoISO(3), created_at: getDaysAgoISO(5) },
+    ]);
+    await mockSearchAPI(page, { prs });
+
+    await submitSearch(page);
+    await waitForChart(page);
+
+    const canvas = page.locator('#prChart canvas');
+    await expect(canvas).toHaveAttribute('role', 'img');
+    await expect(canvas).toHaveAttribute('aria-label', /Daily PR trend chart/);
+    await expect(canvas).toHaveAttribute('aria-describedby', 'pr-chart-description');
+
+    // Verify the hidden description element exists and has content
+    const description = page.locator('#pr-chart-description');
+    await expect(description).toHaveText(/Chart: Daily PR trend/);
+    await expect(description).toHaveText(/pull requests/);
+  });
+
 });

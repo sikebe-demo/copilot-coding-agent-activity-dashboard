@@ -50,6 +50,16 @@ test.describe('API Errors', () => {
 
     await expect(page.locator('#error')).toBeVisible();
   });
+
+  test('should have correct ARIA attributes on error element for screen readers', async ({ page }) => {
+    await mockSearchAPI(page, { status: 500, body: { message: 'Server Error' } });
+    await submitSearch(page);
+    await waitForError(page);
+
+    const errorElement = page.locator('#error');
+    await expect(errorElement).toHaveAttribute('role', 'alert');
+    await expect(errorElement).toHaveAttribute('aria-live', 'assertive');
+  });
 });
 
 // ============================================================================
