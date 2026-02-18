@@ -181,17 +181,17 @@ export function convertGraphQLRateLimit(rl: GraphQLRateLimit): RateLimitInfo {
 // GraphQL Query Constants
 // ============================================================================
 
-const GRAPHQL_PR_FRAGMENT = `
-    ... on PullRequest {
-        databaseId
-        number
-        title
-        state
-        createdAt
-        mergedAt
-        url
-        author { login }
-    }
+const GRAPHQL_PR_FRAGMENT_DEF = `
+fragment PRFields on PullRequest {
+    databaseId
+    number
+    title
+    state
+    createdAt
+    mergedAt
+    url
+    author { login }
+}
 `;
 
 /**
@@ -203,18 +203,21 @@ query CopilotDashboard($copilotQuery: String!, $mergedAllQuery: String!, $totalQ
     copilotPRs: search(query: $copilotQuery, type: ISSUE, first: $first, after: $after) {
         issueCount
         pageInfo { hasNextPage endCursor }
-        nodes { ${GRAPHQL_PR_FRAGMENT} }
+        nodes { ...PRFields }
     }
+    # Note: allMergedPRs is hardcoded to first 100 items without $after pagination.
+    # Additional pages are fetched separately via fetchMergedPRsWithPagination().
     allMergedPRs: search(query: $mergedAllQuery, type: ISSUE, first: 100) {
         issueCount
         pageInfo { hasNextPage endCursor }
-        nodes { ${GRAPHQL_PR_FRAGMENT} }
+        nodes { ...PRFields }
     }
     totalCount: search(query: $totalQuery, type: ISSUE, first: 1) { issueCount }
     mergedCount: search(query: $mergedQuery, type: ISSUE, first: 1) { issueCount }
     openCount: search(query: $openQuery, type: ISSUE, first: 1) { issueCount }
     rateLimit { limit remaining resetAt cost used }
 }
+${GRAPHQL_PR_FRAGMENT_DEF}
 `;
 
 /**
@@ -225,10 +228,11 @@ query SearchQuery($query: String!, $first: Int!, $after: String) {
     search(query: $query, type: ISSUE, first: $first, after: $after) {
         issueCount
         pageInfo { hasNextPage endCursor }
-        nodes { ${GRAPHQL_PR_FRAGMENT} }
+        nodes { ...PRFields }
     }
     rateLimit { limit remaining resetAt cost used }
 }
+${GRAPHQL_PR_FRAGMENT_DEF}
 `;
 
 // ============================================================================
@@ -748,7 +752,7 @@ export function generateResponseTimeStatsHtml(metrics: ResponseTimeMetrics, othe
               <polyline points="12 6 12 12 16 14"></polyline>
             </svg>
           </div>
-          <span class="text-sm font-medium text-slate-600 dark:text-slate-300">${entry.label}</span>
+          <span class="text-sm font-medium text-slate-600 dark:text-slate-300">${escapeHtml(entry.label)}</span>
         </div>
         ${valueHtml}
       </div>
@@ -1274,6 +1278,11 @@ export function generateRateLimitHtml(params: RateLimitDisplayParams): string {
         ? 'text-red-600 dark:text-red-400'
         : '';
 
+    // Heuristic detection of GraphQL vs REST rate limits:
+    // - GitHub GraphQL API currently allows 5,000 points/hour.
+    // - GitHub REST Search API currently allows 30 requests/min (authenticated)
+    //   and 10 requests/min (unauthenticated).
+    // Any limit >= 100 is therefore treated as GraphQL here.
     const isGraphQL = info.limit >= 100;
 
     const infoText = fromCache

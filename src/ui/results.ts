@@ -60,9 +60,9 @@ export async function displayResults(prs: PullRequest[], fromDate: string, toDat
             const bannerTitle = document.getElementById('comparisonBannerTitle');
             const bannerSubtitle = document.getElementById('comparisonBannerSubtitle');
             if (bannerTitle && bannerSubtitle) {
-                bannerTitle.textContent = 'Repository-wide comparison data is not available';
+                bannerTitle.textContent = 'Repository-wide comparison data is currently unavailable';
                 bannerSubtitle.textContent =
-                    'Some comparison features are limited because repository-wide data could not be loaded.';
+                    'Some comparison features are limited because repository-wide data for this view is not currently available.';
             }
         }
     }
