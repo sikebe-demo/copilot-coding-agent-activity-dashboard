@@ -239,7 +239,16 @@ async function fetchMergedPRsWithPagination(
                 callbacks.updateProgress(allPRs.length, totalCount, `Fetched ${allPRs.length} of ${totalCount} merged PRs`);
             }
 
-            if (!result.data.search.pageInfo.hasNextPage) break;
+            const hasNextPage = result.data.search.pageInfo.hasNextPage;
+            if (!hasNextPage) break;
+
+            if (page === 10 && hasNextPage) {
+                throw new Error(
+                    'GitHub Search API returned more than 1000 merged PRs for a date segment. ' +
+                    'Results are incomplete. Please narrow the date range and try again.',
+                );
+            }
+
             after = result.data.search.pageInfo.endCursor;
         }
     }

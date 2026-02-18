@@ -25,6 +25,8 @@ export function resetLoadingProgress(): void {
         bar.style.width = '0%';
         bar.classList.remove('progress-indeterminate');
         dom.loadingProgressBar.setAttribute('aria-valuenow', '0');
+        dom.loadingProgressBar.setAttribute('aria-valuemin', '0');
+        dom.loadingProgressBar.setAttribute('aria-valuemax', '100');
     }
     if (dom.loadingProgressText) dom.loadingProgressText.textContent = '';
     if (dom.loadingTitle) dom.loadingTitle.textContent = DEFAULT_LOADING_TITLE;

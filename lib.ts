@@ -442,7 +442,7 @@ export function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo
             rateLimitInfo,
         };
         if (allPRCounts) entry.allPRCounts = allPRCounts;
-        if (allMergedPRs) entry.allMergedPRs = allMergedPRs;
+        if (allMergedPRs !== undefined) entry.allMergedPRs = allMergedPRs;
         storage.setItem(cacheKey, JSON.stringify(entry));
     } catch {
         // Cache save failed (e.g., localStorage full), ignore

@@ -384,10 +384,11 @@
                         </div>
                         <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Merge Success Rate</h2>
                         <div class="relative group">
-                            <button type="button" class="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900" aria-label="Merge Success Rate description" aria-describedby="merge-rate-tooltip">
+                            <button type="button" class="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900" aria-label="Merge Success Rate description" aria-describedby="merge-rate-description">
                                 <span class="inline-flex items-center justify-center w-5 h-5 rounded-full border border-current text-xs font-bold leading-none" aria-hidden="true">?</span>
                             </button>
-                            <div id="merge-rate-tooltip" class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50" role="tooltip">
+                            <p id="merge-rate-description" class="sr-only">Percentage of Copilot Coding Agent PRs that were merged, calculated as merged PRs divided by total PRs.</p>
+                            <div id="merge-rate-tooltip" class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50" role="tooltip" aria-hidden="true">
                                 <p class="font-semibold text-slate-800 dark:text-slate-100 mb-1">Merge Success Rate</p>
                                 <p>Percentage of Copilot Coding Agent PRs that were merged, calculated as merged PRs divided by total PRs.</p>
                             </div>

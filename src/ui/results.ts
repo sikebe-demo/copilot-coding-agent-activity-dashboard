@@ -13,7 +13,7 @@ import { displayResponseTimeAnalysis } from './responseTime';
 export async function displayResults(prs: PullRequest[], fromDate: string, toDate: string, allPRCounts?: AllPRCounts, allMergedPRs?: PullRequest[]): Promise<void> {
     const counts = classifyPRs(prs);
 
-    const hasComparison = allPRCounts && allPRCounts.total > 0;
+    const hasComparison = !!allPRCounts;
 
     // Update summary cards
     if (hasComparison) {
