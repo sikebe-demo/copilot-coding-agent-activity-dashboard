@@ -50,7 +50,7 @@ const defaultAllPRCounts: AllPRCounts = { total: 1, merged: 0, closed: 0, open: 
 // ---------------------------------------------------------------------------
 
 describe('getCacheKey', () => {
-  it('should include version prefix (v5)', () => {
+  it('should include cache version prefix', () => {
     const key = getCacheKey('owner', 'repo', '2026-01-01', '2026-01-31', false);
     expect(key).toContain(CACHE_VERSION);
     expect(key).toContain(CACHE_KEY_PREFIX);
