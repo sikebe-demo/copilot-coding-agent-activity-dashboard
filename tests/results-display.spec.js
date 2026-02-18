@@ -40,7 +40,7 @@ test.describe('Results Display', () => {
     await expect(page.locator('#mergeRateValue')).toContainText('50%');
   });
 
-  test('should display Copilot ratio in each stats card', async ({ page }) => {
+  test('should display Copilot ratio in each stats card after loading comparison', async ({ page }) => {
     const copilotPRs = createPRs([
       { title: 'Copilot PR 1', state: 'closed', merged_at: getDaysAgoISO(5), created_at: getDaysAgoISO(5) },
       { title: 'Copilot PR 2', state: 'open', created_at: getDaysAgoISO(3) },
@@ -90,6 +90,7 @@ test.describe('Results Display', () => {
     await submitSearch(page);
     await waitForResults(page);
 
+    // Comparison data is loaded inline — ratios shown immediately
     await expect(page.locator('#totalPRs')).toContainText('3');
     await expect(page.locator('#totalPRs')).toContainText('/ 10');
     await expect(page.locator('#mergedPRs')).toContainText('2');

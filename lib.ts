@@ -60,7 +60,8 @@ export interface CacheEntry {
     data: PullRequest[];
     timestamp: number;
     rateLimitInfo: RateLimitInfo | null;
-    allPRCounts: AllPRCounts;
+    allPRCounts?: AllPRCounts;
+    allMergedPRs?: PullRequest[];
 }
 
 export interface SearchResponse {
@@ -83,14 +84,153 @@ export interface SearchIssueItem {
 }
 
 // ============================================================================
+// GraphQL Types
+// ============================================================================
+
+export interface GraphQLResponse<T> {
+    data?: T;
+    errors?: Array<{ message: string; type?: string; path?: string[] }>;
+}
+
+export interface GraphQLRateLimit {
+    limit: number;
+    remaining: number;
+    resetAt: string;
+    cost: number;
+    used: number;
+}
+
+export interface GraphQLSearchResult {
+    issueCount: number;
+    pageInfo: {
+        hasNextPage: boolean;
+        endCursor: string | null;
+    };
+    nodes: GraphQLPullRequest[];
+}
+
+export interface GraphQLPullRequest {
+    databaseId: number;
+    number: number;
+    title: string | null;
+    state: 'OPEN' | 'CLOSED' | 'MERGED';
+    createdAt: string;
+    mergedAt: string | null;
+    url: string;
+    author: { login: string } | null;
+}
+
+export interface CombinedQueryData {
+    copilotPRs: GraphQLSearchResult;
+    allMergedPRs: GraphQLSearchResult;
+    totalCount: { issueCount: number };
+    mergedCount: { issueCount: number };
+    openCount: { issueCount: number };
+    rateLimit: GraphQLRateLimit;
+}
+
+export interface SingleSearchQueryData {
+    search: GraphQLSearchResult;
+    rateLimit: GraphQLRateLimit;
+}
+
+// ============================================================================
 // Constants
 // ============================================================================
 
 export const ITEMS_PER_PAGE = 10;
 export const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
-export const CACHE_VERSION = 'v2';
+export const CACHE_VERSION = 'v3';
 export const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 export const CACHE_CLEANUP_INTERVAL_MS = 60 * 1000; // 1 minute
+
+// ============================================================================
+// GraphQL Utilities
+// ============================================================================
+
+/**
+ * Converts GraphQL PullRequest nodes to internal PullRequest format.
+ * GraphQL state MERGED/CLOSED both map to state:'closed'; merged_at distinguishes them.
+ */
+export function convertGraphQLPRs(nodes: GraphQLPullRequest[]): PullRequest[] {
+    return nodes.map(pr => ({
+        id: pr.databaseId,
+        number: pr.number,
+        title: pr.title,
+        state: pr.state === 'OPEN' ? 'open' as const : 'closed' as const,
+        merged_at: pr.mergedAt,
+        created_at: pr.createdAt,
+        user: pr.author ? { login: pr.author.login } : null,
+        html_url: pr.url,
+    }));
+}
+
+/**
+ * Converts a GraphQL rate limit object to our internal RateLimitInfo format.
+ */
+export function convertGraphQLRateLimit(rl: GraphQLRateLimit): RateLimitInfo {
+    return {
+        limit: rl.limit,
+        remaining: rl.remaining,
+        reset: Math.floor(new Date(rl.resetAt).getTime() / 1000),
+        used: rl.used,
+    };
+}
+
+// ============================================================================
+// GraphQL Query Constants
+// ============================================================================
+
+/** Inline PR fields for use inside search query nodes (union type requires type condition) */
+const GRAPHQL_PR_INLINE_FIELDS = `... on PullRequest {
+    databaseId
+    number
+    title
+    state
+    createdAt
+    mergedAt
+    url
+    author { login }
+}`;
+
+/**
+ * Combined query: fetches Copilot PRs + all PR counts in a single request.
+ * Uses aliases to run multiple search queries simultaneously.
+ */
+export const GRAPHQL_COMBINED_QUERY = `
+query CopilotDashboard($copilotQuery: String!, $mergedAllQuery: String!, $totalQuery: String!, $mergedQuery: String!, $openQuery: String!, $first: Int!, $after: String) {
+    copilotPRs: search(query: $copilotQuery, type: ISSUE, first: $first, after: $after) {
+        issueCount
+        pageInfo { hasNextPage endCursor }
+        nodes { ${GRAPHQL_PR_INLINE_FIELDS} }
+    }
+    # Note: allMergedPRs is hardcoded to first 100 items without $after pagination.
+    # Additional pages are fetched separately via fetchMergedPRsWithPagination().
+    allMergedPRs: search(query: $mergedAllQuery, type: ISSUE, first: 100) {
+        issueCount
+        pageInfo { hasNextPage endCursor }
+        nodes { ${GRAPHQL_PR_INLINE_FIELDS} }
+    }
+    totalCount: search(query: $totalQuery, type: ISSUE, first: 1) { issueCount }
+    mergedCount: search(query: $mergedQuery, type: ISSUE, first: 1) { issueCount }
+    openCount: search(query: $openQuery, type: ISSUE, first: 1) { issueCount }
+    rateLimit { limit remaining resetAt cost used }
+}
+`;
+
+/**
+ * Simple search query for pagination and single-purpose fetches.
+ */
+export const GRAPHQL_SEARCH_QUERY = `
+query SearchQuery($query: String!, $first: Int!, $after: String) {
+    search(query: $query, type: ISSUE, first: $first, after: $after) {
+        issueCount
+        pageInfo { hasNextPage endCursor }
+        nodes { ${GRAPHQL_PR_INLINE_FIELDS} }
+    }
+    rateLimit { limit remaining resetAt cost used }
+}
+`;
 
 // ============================================================================
 // HTML Escaping & Sanitization
@@ -174,6 +314,50 @@ export function validateDateRange(fromDate: string, toDate: string): string | nu
 }
 
 // ============================================================================
+// Date Range Splitting
+// ============================================================================
+
+/**
+ * Splits a date range into non-overlapping segments.
+ * Used to overcome GitHub Search API's 1,000 result limit per query.
+ * Each segment covers a contiguous portion of the date range with no overlap.
+ */
+export function splitDateRange(fromDate: string, toDate: string, segments: number): Array<{ from: string; to: string }> {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const start = new Date(fromDate + 'T00:00:00Z');
+    const end = new Date(toDate + 'T00:00:00Z');
+    const totalDays = Math.round((end.getTime() - start.getTime()) / dayMs) + 1;
+
+    const actualSegments = Math.min(Math.max(1, segments), totalDays);
+    if (actualSegments <= 1) {
+        return [{ from: fromDate, to: toDate }];
+    }
+
+    const ranges: Array<{ from: string; to: string }> = [];
+    let currentDay = 0;
+
+    for (let i = 0; i < actualSegments; i++) {
+        const remainingSegments = actualSegments - i;
+        const remainingDays = totalDays - currentDay;
+        const daysInSegment = Math.ceil(remainingDays / remainingSegments);
+
+        const segStart = new Date(start.getTime() + currentDay * dayMs);
+        const segEnd = i === actualSegments - 1
+            ? end
+            : new Date(start.getTime() + (currentDay + daysInSegment - 1) * dayMs);
+
+        ranges.push({
+            from: segStart.toISOString().split('T')[0],
+            to: segEnd.toISOString().split('T')[0],
+        });
+
+        currentDay += daysInSegment;
+    }
+
+    return ranges;
+}
+
+// ============================================================================
 // Cache Functions
 // ============================================================================
 
@@ -215,8 +399,11 @@ export function isCacheEntry(value: unknown): value is CacheEntry {
 
     if (!Array.isArray(obj.data)) return false;
     if (typeof obj.timestamp !== 'number') return false;
-    if (!isValidAllPRCounts(obj.allPRCounts)) return false;
     if (!isValidRateLimitInfo(obj.rateLimitInfo)) return false;
+
+    // Optional comparison data validation
+    if (obj.allPRCounts !== undefined && !isValidAllPRCounts(obj.allPRCounts)) return false;
+    if (obj.allMergedPRs !== undefined && !Array.isArray(obj.allMergedPRs)) return false;
 
     return true;
 }
@@ -244,17 +431,33 @@ export function getFromCache(cacheKey: string, storage: Storage = localStorage):
     }
 }
 
-export function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo: RateLimitInfo | null, allPRCounts: AllPRCounts, storage: Storage = localStorage): void {
+export function saveToCache(cacheKey: string, data: PullRequest[], rateLimitInfo: RateLimitInfo | null, allPRCounts?: AllPRCounts, allMergedPRs?: PullRequest[], storage: Storage = localStorage): void {
     try {
         const entry: CacheEntry = {
             data,
             timestamp: Date.now(),
             rateLimitInfo,
-            allPRCounts
         };
+        if (allPRCounts) entry.allPRCounts = allPRCounts;
+        if (allMergedPRs !== undefined) entry.allMergedPRs = allMergedPRs;
         storage.setItem(cacheKey, JSON.stringify(entry));
     } catch {
         // Cache save failed (e.g., localStorage full), ignore
+    }
+}
+
+export function updateCacheWithComparison(cacheKey: string, allPRCounts: AllPRCounts, allMergedPRs: PullRequest[], rateLimitInfo: RateLimitInfo | null, storage: Storage = localStorage): void {
+    try {
+        const cached = storage.getItem(cacheKey);
+        if (!cached) return;
+        const parsed: unknown = JSON.parse(cached);
+        if (!isCacheEntry(parsed)) return;
+        parsed.allPRCounts = allPRCounts;
+        parsed.allMergedPRs = allMergedPRs;
+        if (rateLimitInfo) parsed.rateLimitInfo = rateLimitInfo;
+        storage.setItem(cacheKey, JSON.stringify(parsed));
+    } catch {
+        // ignore
     }
 }
 
@@ -440,6 +643,121 @@ export function classifyPRs(prs: PullRequest[]): PRCounts {
     };
 }
 
+export function calculateResponseTimes(prs: PullRequest[]): ResponseTimeMetrics | null {
+  const mergedPRs = prs.filter(pr => pr.merged_at !== null);
+
+  const hours = mergedPRs
+    .map(pr => {
+      const created = new Date(pr.created_at).getTime();
+      const merged = new Date(pr.merged_at!).getTime();
+      return (merged - created) / (1000 * 60 * 60);
+    })
+    .filter(h => Number.isFinite(h) && h >= 0);
+
+  if (hours.length === 0) return null;
+
+  const sorted = [...hours].sort((a, b) => a - b);
+
+  const average = sorted.reduce((sum, h) => sum + h, 0) / sorted.length;
+  const fastest = sorted[0];
+  const slowest = sorted[sorted.length - 1];
+
+  let median: number;
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    median = (sorted[mid - 1] + sorted[mid]) / 2;
+  } else {
+    median = sorted[mid];
+  }
+
+  const bucketDefs: { label: string; min: number; max: number }[] = [
+    { label: '<1h',   min: 0,   max: 1 },
+    { label: '1-6h',  min: 1,   max: 6 },
+    { label: '6-24h', min: 6,   max: 24 },
+    { label: '1-3d',  min: 24,  max: 72 },
+    { label: '3-7d',  min: 72,  max: 168 },
+    { label: '7d+',   min: 168, max: Infinity },
+  ];
+
+  const buckets = bucketDefs.map(def => ({
+    label: def.label,
+    count: hours.filter(h => h >= def.min && h < def.max).length,
+  }));
+  buckets[buckets.length - 1].count = hours.filter(h => h >= 168).length;
+
+  return {
+    average,
+    median,
+    fastest,
+    slowest,
+    buckets,
+    totalMerged: hours.length,
+  };
+}
+
+export function formatDuration(hours: number): string {
+  if (!Number.isFinite(hours)) return '0 min';
+  hours = Math.max(0, hours);
+
+  if (hours < 1) {
+    const mins = Math.round(hours * 60);
+    if (mins >= 60) return '1.0 hours';
+    return `${mins} min`;
+  }
+  if (hours < 24) {
+    const fixed = parseFloat(hours.toFixed(1));
+    if (fixed >= 24) return `${(fixed / 24).toFixed(1)} days`;
+    return `${hours.toFixed(1)} hours`;
+  }
+  return `${(hours / 24).toFixed(1)} days`;
+}
+
+export function generateResponseTimeStatsHtml(metrics: ResponseTimeMetrics, othersMetrics?: ResponseTimeMetrics | null): string {
+  const entries = [
+    { label: 'Average Response Time', value: metrics.average, othersValue: othersMetrics?.average },
+    { label: 'Median Response Time',  value: metrics.median,  othersValue: othersMetrics?.median },
+    { label: 'Fastest PR',            value: metrics.fastest, othersValue: othersMetrics?.fastest },
+    { label: 'Slowest PR',            value: metrics.slowest, othersValue: othersMetrics?.slowest },
+  ];
+
+  const showComparison = othersMetrics !== undefined;
+
+  return entries.map(entry => {
+    const mainValue = formatDuration(entry.value);
+
+    const valueHtml = showComparison
+      ? `<div class="space-y-1.5">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">Copilot</span>
+              <span class="text-xl font-bold text-slate-800 dark:text-slate-100">${mainValue}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">Others</span>
+              <span class="text-xl font-bold text-slate-800 dark:text-slate-100">${entry.othersValue != null ? formatDuration(entry.othersValue) : '-'}</span>
+            </div>
+          </div>`
+      : `<p class="text-2xl font-bold text-slate-800 dark:text-slate-100">${mainValue}</p>`;
+
+    return `
+    <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
+      <div class="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-amber-500/10 to-orange-500/10 rounded-full -translate-y-16 translate-x-16"></div>
+      <div class="relative">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="p-2 rounded-lg bg-linear-to-br from-amber-500 to-orange-500">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </div>
+          <span class="text-sm font-medium text-slate-600 dark:text-slate-300">${escapeHtml(entry.label)}</span>
+        </div>
+        ${valueHtml}
+      </div>
+    </div>
+  `;
+  }).join('');
+}
+
 // ============================================================================
 // Chart Data Preparation
 // ============================================================================
@@ -449,6 +767,15 @@ export interface ChartData {
     mergedData: number[];
     closedData: number[];
     openData: number[];
+}
+
+export interface ResponseTimeMetrics {
+  average: number;    // 平均所要時間（hours）
+  median: number;     // 中央値（hours）
+  fastest: number;    // 最速（hours）
+  slowest: number;    // 最遅（hours）
+  buckets: { label: string; count: number }[];  // ヒストグラム用バケット（6個）
+  totalMerged: number; // 対象マージ済みPR数
 }
 
 /**
@@ -824,6 +1151,16 @@ export const CHART_COLORS = {
     },
 } as const;
 
+export const RESPONSE_TIME_CHART_COLORS = {
+  backgroundColor: 'rgba(245, 158, 11, 0.8)',
+  borderColor: 'rgba(245, 158, 11, 1)',
+} as const;
+
+export const RESPONSE_TIME_OTHERS_CHART_COLORS = {
+  backgroundColor: 'rgba(99, 102, 241, 0.6)',
+  borderColor: 'rgba(99, 102, 241, 1)',
+} as const;
+
 export interface ChartTheme {
     textColor: string;
     gridColor: string;
@@ -938,20 +1275,31 @@ export function generateRateLimitHtml(params: RateLimitDisplayParams): string {
         ? 'text-red-600 dark:text-red-400'
         : '';
 
+    // Heuristic detection of GraphQL vs REST rate limits:
+    // - GitHub GraphQL API currently allows 5,000 points/hour.
+    // - GitHub REST Search API currently allows 30 requests/min (authenticated)
+    //   and 10 requests/min (unauthenticated).
+    // Any limit >= 100 is therefore treated as GraphQL here.
+    const isGraphQL = info.limit >= 100;
+
     const infoText = fromCache
         ? '<p>📦 Data loaded from cache (5 min TTL). No API call made.</p>'
-        : `<p>🔄 Used ${info.used} requests this minute</p>`;
+        : isGraphQL
+            ? `<p>🔄 Used ${info.used} points this hour</p>`
+            : `<p>🔄 Used ${info.used} requests this minute</p>`;
 
-    const authTip = isAuthenticated
-        ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
-        : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">PAT</a> to increase to 30 requests/min.';
+    const authTip = isGraphQL
+        ? 'Authenticated via GraphQL API. Rate limit: 5,000 points/hour — dramatically more generous than REST Search API.'
+        : isAuthenticated
+            ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
+            : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">PAT</a> to increase to 30 requests/min.';
 
     return `
         <div class="space-y-3">
             <!-- Header -->
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200">GitHub Search API</span>
+                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200">${isGraphQL ? 'GitHub GraphQL API' : 'GitHub Search API'}</span>
                     ${authStatusBadge}
                     ${cacheIndicator}
                 </div>

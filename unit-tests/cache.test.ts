@@ -50,7 +50,7 @@ const defaultAllPRCounts: AllPRCounts = { total: 1, merged: 0, closed: 0, open: 
 // ---------------------------------------------------------------------------
 
 describe('getCacheKey', () => {
-  it('should include version prefix (v2)', () => {
+  it('should include cache version prefix', () => {
     const key = getCacheKey('owner', 'repo', '2026-01-01', '2026-01-31', false);
     expect(key).toContain(CACHE_VERSION);
     expect(key).toContain(CACHE_KEY_PREFIX);
@@ -96,6 +96,7 @@ describe('getFromCache', () => {
       timestamp: Date.now(),
       rateLimitInfo: { limit: 30, remaining: 29, reset: 0, used: 1 },
       allPRCounts: defaultAllPRCounts,
+      allMergedPRs: [],
     };
     const key = 'test_cache_key';
     storage.setItem(key, JSON.stringify(entry));
@@ -114,6 +115,7 @@ describe('getFromCache', () => {
       timestamp: Date.now() - CACHE_DURATION_MS - 1000, // expired
       rateLimitInfo: null,
       allPRCounts: defaultAllPRCounts,
+      allMergedPRs: [],
     };
     const key = 'expired_key';
     storage.setItem(key, JSON.stringify(entry));
@@ -139,6 +141,7 @@ describe('getFromCache', () => {
       timestamp: Date.now(),
       rateLimitInfo: null,
       allPRCounts: defaultAllPRCounts,
+      allMergedPRs: [],
     };
     const key = 'null_ratelimit_key';
     storage.setItem(key, JSON.stringify(entry));
@@ -164,7 +167,7 @@ describe('saveToCache', () => {
     const counts: AllPRCounts = { total: 1, merged: 0, closed: 0, open: 1 };
     const key = 'save_test_key';
 
-    saveToCache(key, [pr], rateLimitInfo, counts, storage);
+    saveToCache(key, [pr], rateLimitInfo, counts, [], storage);
 
     const raw = storage.getItem(key);
     expect(raw).not.toBeNull();
@@ -186,7 +189,7 @@ describe('saveToCache', () => {
     const pr = createTestPR();
     // Should not throw
     expect(() =>
-      saveToCache('quota_key', [pr], null, defaultAllPRCounts, throwingStorage)
+      saveToCache('quota_key', [pr], null, defaultAllPRCounts, [], throwingStorage)
     ).not.toThrow();
   });
 });
@@ -218,13 +221,14 @@ describe('clearOldCache', () => {
     expect(storage.getItem(v1Key)).toBeNull();
   });
 
-  it('should keep v2 cache entries (current version)', () => {
+  it('should keep current version cache entries', () => {
     const v2Key = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_validEntry`;
     const entry: CacheEntry = {
       data: [createTestPR()],
       timestamp: Date.now(),
       rateLimitInfo: null,
       allPRCounts: defaultAllPRCounts,
+      allMergedPRs: [],
     };
     storage.setItem(v2Key, JSON.stringify(entry));
 
@@ -233,13 +237,14 @@ describe('clearOldCache', () => {
     expect(storage.getItem(v2Key)).not.toBeNull();
   });
 
-  it('should remove expired v2 entries', () => {
+  it('should remove expired current version entries', () => {
     const expiredKey = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_expiredEntry`;
     const entry: CacheEntry = {
       data: [createTestPR()],
       timestamp: Date.now() - CACHE_DURATION_MS - 1000,
       rateLimitInfo: null,
       allPRCounts: defaultAllPRCounts,
+      allMergedPRs: [],
     };
     storage.setItem(expiredKey, JSON.stringify(entry));
 
@@ -265,6 +270,16 @@ describe('isCacheEntry', () => {
       timestamp: Date.now(),
       rateLimitInfo: null,
       allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 },
+      allMergedPRs: [],
+    };
+    expect(isCacheEntry(entry)).toBe(true);
+  });
+
+  it('should return true for valid cache entry without comparison data', () => {
+    const entry = {
+      data: [createTestPR()],
+      timestamp: Date.now(),
+      rateLimitInfo: null,
     };
     expect(isCacheEntry(entry)).toBe(true);
   });
@@ -279,40 +294,45 @@ describe('isCacheEntry', () => {
   });
 
   it('should return false when data is not an array', () => {
-    expect(isCacheEntry({ data: 'not-array', timestamp: 1, allPRCounts: {} })).toBe(false);
+    expect(isCacheEntry({ data: 'not-array', timestamp: 1, allPRCounts: {}, allMergedPRs: [] })).toBe(false);
   });
 
   it('should return false when timestamp is missing', () => {
-    expect(isCacheEntry({ data: [], allPRCounts: {} })).toBe(false);
+    expect(isCacheEntry({ data: [], allPRCounts: {}, allMergedPRs: [] })).toBe(false);
   });
 
-  it('should return false when allPRCounts is missing', () => {
-    expect(isCacheEntry({ data: [], timestamp: 1 })).toBe(false);
+  it('should return true when allPRCounts is missing (optional)', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allMergedPRs: [], rateLimitInfo: null })).toBe(true);
   });
 
   it('should return false when allPRCounts has missing numeric fields', () => {
-    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: {} })).toBe(false);
-    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1 } })).toBe(false);
-    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0 } })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: {}, allMergedPRs: [], rateLimitInfo: null })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1 }, allMergedPRs: [], rateLimitInfo: null })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0 }, allMergedPRs: [], rateLimitInfo: null })).toBe(false);
   });
 
   it('should return false when allPRCounts has non-numeric fields', () => {
-    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 'x', merged: 0, closed: 0, open: 0 } })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 'x', merged: 0, closed: 0, open: 0 }, allMergedPRs: [], rateLimitInfo: null })).toBe(false);
   });
 
   it('should return false when rateLimitInfo is a non-object non-null value', () => {
-    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }, rateLimitInfo: 'invalid' })).toBe(false);
-    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }, rateLimitInfo: 42 })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }, allMergedPRs: [], rateLimitInfo: 'invalid' })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 1, merged: 0, closed: 0, open: 1 }, allMergedPRs: [], rateLimitInfo: 42 })).toBe(false);
   });
 
   it('should return false when rateLimitInfo is missing required fields', () => {
-    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: { limit: 60, remaining: 55, reset: 123456 } })).toBe(false);
-    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: {} })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, allMergedPRs: [], rateLimitInfo: { limit: 60, remaining: 55, reset: 123456 } })).toBe(false);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, allMergedPRs: [], rateLimitInfo: {} })).toBe(false);
   });
 
   it('should accept valid rateLimitInfo as object or null', () => {
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, allMergedPRs: [], rateLimitInfo: null })).toBe(true);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, allMergedPRs: [], rateLimitInfo: { limit: 60, remaining: 55, reset: 123456, used: 5 } })).toBe(true);
+  });
+
+  it('should accept missing allMergedPRs (optional) but reject invalid values', () => {
     expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: null })).toBe(true);
-    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, rateLimitInfo: { limit: 60, remaining: 55, reset: 123456, used: 5 } })).toBe(true);
+    expect(isCacheEntry({ data: [], timestamp: 1, allPRCounts: { total: 0, merged: 0, closed: 0, open: 0 }, allMergedPRs: 'invalid', rateLimitInfo: null })).toBe(false);
   });
 });
 
