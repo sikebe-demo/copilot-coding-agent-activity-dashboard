@@ -181,8 +181,8 @@ export function convertGraphQLRateLimit(rl: GraphQLRateLimit): RateLimitInfo {
 // GraphQL Query Constants
 // ============================================================================
 
-const GRAPHQL_PR_FRAGMENT_DEF = `
-fragment PRFields on PullRequest {
+/** Inline PR fields for use inside search query nodes (union type requires type condition) */
+const GRAPHQL_PR_INLINE_FIELDS = `... on PullRequest {
     databaseId
     number
     title
@@ -191,8 +191,7 @@ fragment PRFields on PullRequest {
     mergedAt
     url
     author { login }
-}
-`;
+}`;
 
 /**
  * Combined query: fetches Copilot PRs + all PR counts in a single request.
@@ -203,21 +202,20 @@ query CopilotDashboard($copilotQuery: String!, $mergedAllQuery: String!, $totalQ
     copilotPRs: search(query: $copilotQuery, type: ISSUE, first: $first, after: $after) {
         issueCount
         pageInfo { hasNextPage endCursor }
-        nodes { ...PRFields }
+        nodes { ${GRAPHQL_PR_INLINE_FIELDS} }
     }
     # Note: allMergedPRs is hardcoded to first 100 items without $after pagination.
     # Additional pages are fetched separately via fetchMergedPRsWithPagination().
     allMergedPRs: search(query: $mergedAllQuery, type: ISSUE, first: 100) {
         issueCount
         pageInfo { hasNextPage endCursor }
-        nodes { ...PRFields }
+        nodes { ${GRAPHQL_PR_INLINE_FIELDS} }
     }
     totalCount: search(query: $totalQuery, type: ISSUE, first: 1) { issueCount }
     mergedCount: search(query: $mergedQuery, type: ISSUE, first: 1) { issueCount }
     openCount: search(query: $openQuery, type: ISSUE, first: 1) { issueCount }
     rateLimit { limit remaining resetAt cost used }
 }
-${GRAPHQL_PR_FRAGMENT_DEF}
 `;
 
 /**
@@ -228,11 +226,10 @@ query SearchQuery($query: String!, $first: Int!, $after: String) {
     search(query: $query, type: ISSUE, first: $first, after: $after) {
         issueCount
         pageInfo { hasNextPage endCursor }
-        nodes { ...PRFields }
+        nodes { ${GRAPHQL_PR_INLINE_FIELDS} }
     }
     rateLimit { limit remaining resetAt cost used }
 }
-${GRAPHQL_PR_FRAGMENT_DEF}
 `;
 
 // ============================================================================
