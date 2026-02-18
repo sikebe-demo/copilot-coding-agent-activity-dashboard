@@ -63,7 +63,7 @@ export async function displayResponseTimeAnalysis(copilotPRs: PullRequest[], all
         const totalMergedCount = allPRCounts?.merged ?? 0;
         const fetchedCount = allMergedPRs?.length ?? 0;
         if (hasComparisonData && totalMergedCount > fetchedCount) {
-            const othersActualFetched = fetchedCount - copilotCount;
+            const othersActualFetched = otherMergedPRs.length;
             dom.responseTimeWarning.textContent = `⚠ Response time statistics for "Others" are based on ${othersActualFetched} of ${othersCount} merged PRs (some data could not be retrieved due to GitHub API limitations)`;
             dom.responseTimeWarning.classList.remove('hidden');
         } else {

@@ -101,6 +101,6 @@ Relevant functions:
 ## Cache Versioning
 When modifying `CacheEntry` schema (adding/removing/renaming fields), bump `CACHE_VERSION` in `lib.ts`:
 ```typescript
-const CACHE_VERSION = 'v6';  // Increment to 'v7', 'v8', etc.
+const CACHE_VERSION = 'v3';  // Increment to 'v4', 'v5', etc.
 ```
-This invalidates old cached entries automatically. Current version: **v6** (inline comparison data for both GraphQL and REST).
+This invalidates old cached entries automatically. Current version: **v3** (inline comparison data for both GraphQL and REST).

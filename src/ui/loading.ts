@@ -37,7 +37,9 @@ export function showIndeterminateProgress(message: string): void {
         const bar = dom.loadingProgressBar as HTMLElement;
         bar.style.width = '0%';
         bar.classList.add('progress-indeterminate');
-        bar.setAttribute('aria-valuenow', '0');
+        bar.removeAttribute('aria-valuenow');
+        bar.removeAttribute('aria-valuemin');
+        bar.removeAttribute('aria-valuemax');
     }
     if (dom.loadingProgressText) dom.loadingProgressText.textContent = '';
     if (dom.loadingMessage) dom.loadingMessage.textContent = message;

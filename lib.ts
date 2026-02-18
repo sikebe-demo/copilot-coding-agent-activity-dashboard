@@ -140,7 +140,7 @@ export interface SingleSearchQueryData {
 
 export const ITEMS_PER_PAGE = 10;
 export const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
-export const CACHE_VERSION = 'v6';
+export const CACHE_VERSION = 'v3';
 export const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 export const CACHE_CLEANUP_INTERVAL_MS = 60 * 1000; // 1 minute
 

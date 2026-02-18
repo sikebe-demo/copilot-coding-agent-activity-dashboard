@@ -22,6 +22,7 @@ export interface AppState {
     activeStatusFilter: PRFilterStatus;
     activeSearchText: string;
     currentAbortController: AbortController | null;
+    comparisonAbortController: AbortController | null;
     responseTimeChartInstance: Chart | null;
     lastSearchParams: SearchParams | null;
     comparisonLoaded: boolean;
@@ -38,6 +39,7 @@ export const state: AppState = {
     activeStatusFilter: 'all',
     activeSearchText: '',
     currentAbortController: null,
+    comparisonAbortController: null,
     responseTimeChartInstance: null,
     lastSearchParams: null,
     comparisonLoaded: false,

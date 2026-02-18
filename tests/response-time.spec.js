@@ -86,7 +86,18 @@ test.describe('Response Time Analysis', () => {
     await waitForResults(page);
 
     await page.waitForSelector('#responseTimeChart canvas', { state: 'visible', timeout: DEFAULT_TIMEOUT });
-    await expect(page.locator('#responseTimeChart canvas')).toBeVisible();
+    const canvas = page.locator('#responseTimeChart canvas');
+    await expect(canvas).toBeVisible();
+
+    // Verify accessibility attributes on the chart canvas
+    await expect(canvas).toHaveAttribute('role', 'img');
+    await expect(canvas).toHaveAttribute('aria-label', 'Response time distribution histogram comparing Copilot and other PRs');
+    await expect(canvas).toHaveAttribute('aria-describedby', 'response-time-chart-description');
+
+    // Verify the hidden description element exists
+    const desc = page.locator('#response-time-chart-description');
+    await expect(desc).toBeAttached();
+    await expect(desc).toContainText('Histogram');
   });
 
   test('マージ済み PR がない場合、空状態メッセージが表示される', async ({ page }) => {

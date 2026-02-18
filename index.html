@@ -242,10 +242,10 @@
                         <div class="flex items-center gap-1 mb-1">
                             <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Total PRs</p>
                             <div class="relative group">
-                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Total PRs description">
+                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900" aria-label="Total PRs description" aria-describedby="total-prs-tooltip">
                                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-current text-[10px] font-bold leading-none" aria-hidden="true">?</span>
                                 </button>
-                                <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                                <div id="total-prs-tooltip" class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50" role="tooltip">
                                     <p>Total number of PRs created by Copilot Coding Agent in the selected period.</p>
                                 </div>
                             </div>
@@ -272,10 +272,10 @@
                         <div class="flex items-center gap-1 mb-1">
                             <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Merged</p>
                             <div class="relative group">
-                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Merged PRs description">
+                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900" aria-label="Merged PRs description" aria-describedby="merged-prs-tooltip">
                                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-current text-[10px] font-bold leading-none" aria-hidden="true">?</span>
                                 </button>
-                                <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                                <div id="merged-prs-tooltip" class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50" role="tooltip">
                                     <p>Number of PRs that were successfully reviewed and merged into the codebase.</p>
                                 </div>
                             </div>
@@ -303,10 +303,10 @@
                         <div class="flex items-center gap-1 mb-1">
                             <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Closed</p>
                             <div class="relative group">
-                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Closed PRs description">
+                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900" aria-label="Closed PRs description" aria-describedby="closed-prs-tooltip">
                                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-current text-[10px] font-bold leading-none" aria-hidden="true">?</span>
                                 </button>
-                                <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                                <div id="closed-prs-tooltip" class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50" role="tooltip">
                                     <p>Number of PRs that were closed without being merged into the codebase.</p>
                                 </div>
                             </div>
@@ -334,10 +334,10 @@
                         <div class="flex items-center gap-1 mb-1">
                             <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Open</p>
                             <div class="relative group">
-                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Open PRs description">
+                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900" aria-label="Open PRs description" aria-describedby="open-prs-tooltip">
                                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-current text-[10px] font-bold leading-none" aria-hidden="true">?</span>
                                 </button>
-                                <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                                <div id="open-prs-tooltip" class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50" role="tooltip">
                                     <p>Number of PRs that are currently open and awaiting review or action.</p>
                                 </div>
                             </div>
@@ -384,10 +384,10 @@
                         </div>
                         <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Merge Success Rate</h2>
                         <div class="relative group">
-                            <button type="button" class="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Merge Success Rate description">
+                            <button type="button" class="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900" aria-label="Merge Success Rate description" aria-describedby="merge-rate-tooltip">
                                 <span class="inline-flex items-center justify-center w-5 h-5 rounded-full border border-current text-xs font-bold leading-none" aria-hidden="true">?</span>
                             </button>
-                            <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                            <div id="merge-rate-tooltip" class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50" role="tooltip">
                                 <p class="font-semibold text-slate-800 dark:text-slate-100 mb-1">Merge Success Rate</p>
                                 <p>Percentage of Copilot Coding Agent PRs that were merged, calculated as merged PRs divided by total PRs.</p>
                             </div>
@@ -438,10 +438,10 @@
                     </div>
                     <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Response Time Analysis</h2>
                     <div class="relative group">
-                        <button type="button" class="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="How Response Time is calculated">
+                        <button type="button" class="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900" aria-label="How Response Time is calculated" aria-describedby="response-time-tooltip">
                             <span class="inline-flex items-center justify-center w-5 h-5 rounded-full border border-current text-xs font-bold leading-none" aria-hidden="true">?</span>
                         </button>
-                        <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                        <div id="response-time-tooltip" class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50" role="tooltip">
                             <p class="font-semibold text-slate-800 dark:text-slate-100 mb-1">How Response Time is Calculated</p>
                             <p>Measures the elapsed time from when a PR was created (<code class="text-xs bg-slate-100 dark:bg-slate-700 px-1 rounded">created_at</code>) to when it was merged (<code class="text-xs bg-slate-100 dark:bg-slate-700 px-1 rounded">merged_at</code>). Unmerged PRs are excluded.</p>
                         </div>

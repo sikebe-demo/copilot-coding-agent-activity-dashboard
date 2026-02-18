@@ -86,6 +86,10 @@ async function handleFormSubmit(e: Event): Promise<void> {
     if (state.currentAbortController) {
         state.currentAbortController.abort();
     }
+    if (state.comparisonAbortController) {
+        state.comparisonAbortController.abort();
+        state.comparisonAbortController = null;
+    }
     state.currentAbortController = new AbortController();
 
     const requestId = ++state.currentRequestId;
@@ -136,8 +140,11 @@ async function handleLoadComparison(): Promise<void> {
     }
 
     try {
-        const abortController = new AbortController();
-        const result = await fetchComparisonData(owner, repo, fromDate, toDate, token, abortController.signal);
+        if (state.comparisonAbortController) {
+            state.comparisonAbortController.abort();
+        }
+        state.comparisonAbortController = new AbortController();
+        const result = await fetchComparisonData(owner, repo, fromDate, toDate, token, state.comparisonAbortController.signal);
 
         updateComparisonDisplay(result.allPRCounts, result.allMergedPRs);
         if (result.rateLimitInfo) {
