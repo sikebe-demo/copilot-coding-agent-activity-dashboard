@@ -275,7 +275,7 @@ async function fetchWithGraphQL(
     const baseQuery = `repo:${owner}/${repo} is:pr created:${fromDate}..${toDate}`;
     const mergedAllQuery = `${baseQuery} is:merged`;
     const totalQuery = baseQuery;
-    const mergedQuery = mergedAllQuery;
+    const mergedQuery = mergedAllQuery; // Alias for GraphQL variable $mergedQuery (same as mergedAllQuery: all merged PRs including Copilot)
     const openQuery = `${baseQuery} is:open`;
 
     callbacks.updatePhase('Fetching via GraphQL API...', 'Executing combined query...');

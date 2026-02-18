@@ -53,6 +53,8 @@ export function updateLoadingProgress(current: number, total: number, message: s
         const percent = Math.min(Math.round((current / total) * 100), 100);
         bar.style.width = `${percent}%`;
         dom.loadingProgressBar.setAttribute('aria-valuenow', String(percent));
+        dom.loadingProgressBar.setAttribute('aria-valuemin', '0');
+        dom.loadingProgressBar.setAttribute('aria-valuemax', '100');
     }
     if (dom.loadingProgressText) dom.loadingProgressText.textContent = `${current} / ${total}`;
     if (dom.loadingMessage) dom.loadingMessage.textContent = message;
