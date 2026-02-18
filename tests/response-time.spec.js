@@ -308,41 +308,9 @@ test.describe('Response Time Analysis', () => {
     await expect(page.locator('#responseTimeSubtitle')).toContainText('1 Copilot');
     await expect(page.locator('#responseTimeSubtitle')).toContainText('1499 other');
 
-    // Warning should be visible with rate limit message (fetched < 1000)
+    // Warning should be visible with rate limit message (fetched < total)
     await expect(page.locator('#responseTimeWarning')).toBeVisible();
-    await expect(page.locator('#responseTimeWarning')).toContainText('interrupted');
-  });
-
-  test('GraphQL: 1000件上限到達時にAPI制限の警告を表示', async ({ page }) => {
-    const copilotPRs = createPRs([
-      { title: 'Copilot PR 1', state: 'closed', created_at: '2024-01-15T00:00:00Z', merged_at: '2024-01-15T02:00:00Z' },
-    ]);
-    // Generate 1001 allMergedPRs (1 copilot + 1000 others) — app can only fetch 1000
-    const otherMergedPRs = Array.from({ length: 1000 }, (_, i) => createPR({
-      id: 2000 + i,
-      number: 2000 + i,
-      title: `Merged PR ${i + 1}`,
-      state: 'closed',
-      created_at: '2024-01-15T00:00:00Z',
-      merged_at: '2024-01-16T00:00:00Z',
-      user: { login: 'human-dev' },
-      html_url: `https://github.com/test/repo/pull/${2000 + i}`,
-    }));
-    const allMerged = [...copilotPRs, ...otherMergedPRs];
-    const allPRCounts = { total: 2000, merged: 1500, open: 500 };
-
-    await mockGraphQLAPI(page, { prs: copilotPRs, allMergedPRs: allMerged, allPRCounts });
-
-    await submitSearch(page, { token: 'ghp_test123456789' });
-    await waitForResults(page);
-
-    // Subtitle uses allPRCounts.merged for accurate count
-    await expect(page.locator('#responseTimeSubtitle')).toContainText('1 Copilot');
-    await expect(page.locator('#responseTimeSubtitle')).toContainText('1499 other');
-
-    // Warning should show API limit message (fetched >= 1000)
-    await expect(page.locator('#responseTimeWarning')).toBeVisible();
-    await expect(page.locator('#responseTimeWarning')).toContainText('GitHub API limit');
+    await expect(page.locator('#responseTimeWarning')).toContainText('could not be retrieved');
   });
 
   test('REST: レートリミットで部分データ取得時に警告を表示', async ({ page }) => {
@@ -427,8 +395,8 @@ test.describe('Response Time Analysis', () => {
     await expect(page.locator('#responseTimeSubtitle')).toContainText('1 Copilot');
     await expect(page.locator('#responseTimeSubtitle')).toContainText('200 other');
 
-    // Warning should show rate limit message (fetched < 1000)
+    // Warning should show rate limit message (fetched < total)
     await expect(page.locator('#responseTimeWarning')).toBeVisible();
-    await expect(page.locator('#responseTimeWarning')).toContainText('interrupted');
+    await expect(page.locator('#responseTimeWarning')).toContainText('could not be retrieved');
   });
 });

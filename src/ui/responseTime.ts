@@ -58,17 +58,13 @@ export async function displayResponseTimeAnalysis(copilotPRs: PullRequest[], all
         dom.responseTimeSubtitle.textContent = `Based on ${copilotCount} Copilot merged PR${copilotCount === 1 ? '' : 's'}`;
     }
 
-    // Show warning when allMergedPRs data is incomplete due to GitHub API 1000-item limit
+    // Show warning when allMergedPRs data is incomplete
     if (dom.responseTimeWarning) {
         const totalMergedCount = allPRCounts?.merged ?? 0;
         const fetchedCount = allMergedPRs?.length ?? 0;
         if (hasComparisonData && totalMergedCount > fetchedCount) {
             const othersActualFetched = fetchedCount - copilotCount;
-            if (fetchedCount >= 1000) {
-                dom.responseTimeWarning.textContent = `⚠ Response time statistics for "Others" are based on ${othersActualFetched} of ${othersCount} merged PRs (GitHub API limit: 1,000 items per search)`;
-            } else {
-                dom.responseTimeWarning.textContent = `⚠ Response time statistics for "Others" are based on ${othersActualFetched} of ${othersCount} merged PRs (data retrieval was interrupted, possibly due to API rate limits)`;
-            }
+            dom.responseTimeWarning.textContent = `⚠ Response time statistics for "Others" are based on ${othersActualFetched} of ${othersCount} merged PRs (some data could not be retrieved due to GitHub API limitations)`;
             dom.responseTimeWarning.classList.remove('hidden');
         } else {
             dom.responseTimeWarning.classList.add('hidden');

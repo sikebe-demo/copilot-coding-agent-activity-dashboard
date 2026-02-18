@@ -313,6 +313,50 @@ export function validateDateRange(fromDate: string, toDate: string): string | nu
 }
 
 // ============================================================================
+// Date Range Splitting
+// ============================================================================
+
+/**
+ * Splits a date range into non-overlapping segments.
+ * Used to overcome GitHub Search API's 1,000 result limit per query.
+ * Each segment covers a contiguous portion of the date range with no overlap.
+ */
+export function splitDateRange(fromDate: string, toDate: string, segments: number): Array<{ from: string; to: string }> {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const start = new Date(fromDate + 'T00:00:00Z');
+    const end = new Date(toDate + 'T00:00:00Z');
+    const totalDays = Math.round((end.getTime() - start.getTime()) / dayMs) + 1;
+
+    const actualSegments = Math.min(Math.max(1, segments), totalDays);
+    if (actualSegments <= 1) {
+        return [{ from: fromDate, to: toDate }];
+    }
+
+    const ranges: Array<{ from: string; to: string }> = [];
+    let currentDay = 0;
+
+    for (let i = 0; i < actualSegments; i++) {
+        const remainingSegments = actualSegments - i;
+        const remainingDays = totalDays - currentDay;
+        const daysInSegment = Math.ceil(remainingDays / remainingSegments);
+
+        const segStart = new Date(start.getTime() + currentDay * dayMs);
+        const segEnd = i === actualSegments - 1
+            ? end
+            : new Date(start.getTime() + (currentDay + daysInSegment - 1) * dayMs);
+
+        ranges.push({
+            from: segStart.toISOString().split('T')[0],
+            to: segEnd.toISOString().split('T')[0],
+        });
+
+        currentDay += daysInSegment;
+    }
+
+    return ranges;
+}
+
+// ============================================================================
 // Cache Functions
 // ============================================================================
 

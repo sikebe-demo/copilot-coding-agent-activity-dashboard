@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { convertGraphQLPRs, convertGraphQLRateLimit } from '../lib';
+import { convertGraphQLPRs, convertGraphQLRateLimit, splitDateRange } from '../lib';
 import type { GraphQLPullRequest, GraphQLRateLimit } from '../lib';
 
 // ============================================================================
@@ -127,5 +127,84 @@ describe('convertGraphQLRateLimit', () => {
 
         expect(result).not.toHaveProperty('cost');
         expect(Object.keys(result).sort()).toEqual(['limit', 'remaining', 'reset', 'used']);
+    });
+});
+
+// ============================================================================
+// splitDateRange
+// ============================================================================
+
+describe('splitDateRange', () => {
+    it('should return single range when segments <= 1', () => {
+        const result = splitDateRange('2024-01-01', '2024-12-31', 1);
+        expect(result).toEqual([{ from: '2024-01-01', to: '2024-12-31' }]);
+    });
+
+    it('should return single range when segments is 0 or negative', () => {
+        expect(splitDateRange('2024-01-01', '2024-12-31', 0)).toEqual([{ from: '2024-01-01', to: '2024-12-31' }]);
+        expect(splitDateRange('2024-01-01', '2024-12-31', -1)).toEqual([{ from: '2024-01-01', to: '2024-12-31' }]);
+    });
+
+    it('should split into 2 equal segments', () => {
+        const result = splitDateRange('2024-01-01', '2024-01-10', 2);
+        expect(result).toHaveLength(2);
+        // First segment ends before second starts (no overlap)
+        expect(result[0].from).toBe('2024-01-01');
+        expect(result[1].to).toBe('2024-01-10');
+        // Segments are contiguous: second starts day after first ends
+        const firstEnd = new Date(result[0].to + 'T00:00:00Z');
+        const secondStart = new Date(result[1].from + 'T00:00:00Z');
+        const gapDays = (secondStart.getTime() - firstEnd.getTime()) / (24 * 60 * 60 * 1000);
+        expect(gapDays).toBe(1);
+    });
+
+    it('should split into 3 segments covering full range', () => {
+        const result = splitDateRange('2024-01-01', '2024-01-09', 3);
+        expect(result).toHaveLength(3);
+        expect(result[0].from).toBe('2024-01-01');
+        expect(result[2].to).toBe('2024-01-09');
+        // All segments contiguous
+        for (let i = 0; i < result.length - 1; i++) {
+            const curEnd = new Date(result[i].to + 'T00:00:00Z');
+            const nextStart = new Date(result[i + 1].from + 'T00:00:00Z');
+            const gapDays = (nextStart.getTime() - curEnd.getTime()) / (24 * 60 * 60 * 1000);
+            expect(gapDays).toBe(1);
+        }
+    });
+
+    it('should handle single day range', () => {
+        const result = splitDateRange('2024-06-15', '2024-06-15', 2);
+        expect(result).toEqual([{ from: '2024-06-15', to: '2024-06-15' }]);
+    });
+
+    it('should cap segments at number of days', () => {
+        // 3 days but requesting 10 segments
+        const result = splitDateRange('2024-01-01', '2024-01-03', 10);
+        expect(result).toHaveLength(3);
+        expect(result[0]).toEqual({ from: '2024-01-01', to: '2024-01-01' });
+        expect(result[1]).toEqual({ from: '2024-01-02', to: '2024-01-02' });
+        expect(result[2]).toEqual({ from: '2024-01-03', to: '2024-01-03' });
+    });
+
+    it('should produce non-overlapping ranges for a full year', () => {
+        const result = splitDateRange('2024-01-01', '2024-12-31', 4);
+        expect(result).toHaveLength(4);
+        expect(result[0].from).toBe('2024-01-01');
+        expect(result[3].to).toBe('2024-12-31');
+        // Verify no overlaps and no gaps
+        for (let i = 0; i < result.length - 1; i++) {
+            const curEnd = new Date(result[i].to + 'T00:00:00Z');
+            const nextStart = new Date(result[i + 1].from + 'T00:00:00Z');
+            const gapDays = (nextStart.getTime() - curEnd.getTime()) / (24 * 60 * 60 * 1000);
+            expect(gapDays).toBe(1);
+        }
+    });
+
+    it('should handle 2-day range split into 2', () => {
+        const result = splitDateRange('2024-03-15', '2024-03-16', 2);
+        expect(result).toEqual([
+            { from: '2024-03-15', to: '2024-03-15' },
+            { from: '2024-03-16', to: '2024-03-16' },
+        ]);
     });
 });
