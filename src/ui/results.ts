@@ -42,7 +42,7 @@ export async function displayResults(prs: PullRequest[], fromDate: string, toDat
 
     // Display response time analysis
     try {
-        await displayResponseTimeAnalysis(prs, allMergedPRs ?? []);
+        await displayResponseTimeAnalysis(prs, allMergedPRs ?? [], allPRCounts);
     } catch (e) {
         console.error('Response time analysis failed:', e);
     }
@@ -93,7 +93,7 @@ export function updateComparisonDisplay(allPRCounts: AllPRCounts, allMergedPRs: 
     if (dom.openPRs) dom.openPRs.innerHTML = createRatioHtml(counts.open, allPRCounts.open, 'text-blue-600 dark:text-blue-400');
 
     // Update response time analysis with comparison data
-    displayResponseTimeAnalysis(state.allFetchedPRs, allMergedPRs).catch(e => {
+    displayResponseTimeAnalysis(state.allFetchedPRs, allMergedPRs, allPRCounts).catch(e => {
         console.error('Response time comparison update failed:', e);
     });
 

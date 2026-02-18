@@ -72,6 +72,7 @@ export interface DOMElements {
     loadingTitle: HTMLElement | null;
     loadingMessage: HTMLElement | null;
     responseTimeSubtitle: HTMLElement | null;
+    responseTimeWarning: HTMLElement | null;
     responseTimeStats: HTMLElement | null;
     responseTimeChart: HTMLElement | null;
     responseTimeEmpty: HTMLElement | null;
@@ -108,6 +109,7 @@ export const dom: DOMElements = {
     loadingTitle: null,
     loadingMessage: null,
     responseTimeSubtitle: null,
+    responseTimeWarning: null,
     responseTimeStats: null,
     responseTimeChart: null,
     responseTimeEmpty: null,
@@ -144,6 +146,7 @@ export function cacheDOMElements(): void {
     dom.loadingTitle = document.getElementById('loadingTitle');
     dom.loadingMessage = document.getElementById('loadingMessage');
     dom.responseTimeSubtitle = document.getElementById('responseTimeSubtitle');
+    dom.responseTimeWarning = document.getElementById('responseTimeWarning');
     dom.responseTimeStats = document.getElementById('responseTimeStats');
     dom.responseTimeChart = document.getElementById('responseTimeChart');
     dom.responseTimeEmpty = document.getElementById('responseTimeEmpty');

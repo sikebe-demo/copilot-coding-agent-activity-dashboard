@@ -180,6 +180,7 @@ export async function mockSearchAPI(page, options = {}) {
   const {
     prs = [],
     allMergedPRs = null,
+    allPRCounts = null,
     status = 200,
     headers = {},
     body = null,
@@ -195,6 +196,32 @@ export async function mockSearchAPI(page, options = {}) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
+    // If allPRCounts is provided, handle count queries (per_page=1)
+    if (allPRCounts !== null) {
+      const url = route.request().url();
+      const queryParam = new URL(url).searchParams.get('q') || '';
+      const perPage = new URL(url).searchParams.get('per_page') || '';
+
+      if (perPage === '1' && !queryParam.includes('author:')) {
+        let count = 0;
+        if (queryParam.includes('is:merged')) {
+          count = allPRCounts.merged || 0;
+        } else if (queryParam.includes('is:open')) {
+          count = allPRCounts.open || 0;
+        } else {
+          count = allPRCounts.total || 0;
+        }
+        const response = createSearchResponse([]);
+        response.total_count = count;
+        await route.fulfill({
+          status,
+          headers: { ...createRateLimitHeaders(), ...headers },
+          body: JSON.stringify(response)
+        });
+        return;
+      }
+    }
+
     // If allMergedPRs is provided, differentiate queries
     if (allMergedPRs !== null) {
       const url = route.request().url();
@@ -203,10 +230,18 @@ export async function mockSearchAPI(page, options = {}) {
 
       // "All merged PRs" query: has is:merged, no author:, and per_page != 1
       if (queryParam.includes('is:merged') && !queryParam.includes('author:') && perPage !== '1') {
+        // Support pagination: slice allMergedPRs based on page parameter
+        const pageNum = parseInt(new URL(url).searchParams.get('page') || '1', 10);
+        const pageSize = parseInt(perPage, 10) || 100;
+        const start = (pageNum - 1) * pageSize;
+        const pageItems = allMergedPRs.slice(start, start + pageSize);
+        const response = createSearchResponse(pageItems);
+        response.total_count = allMergedPRs.length;
+
         await route.fulfill({
           status,
           headers: { ...createRateLimitHeaders(), ...headers },
-          body: JSON.stringify(createSearchResponse(allMergedPRs))
+          body: JSON.stringify(response)
         });
         return;
       }
@@ -349,7 +384,11 @@ export function createGraphQLCombinedResponse(prs, allPRCounts = null, allMerged
 
   // allMergedPRs defaults to merged PRs from the provided prs list
   const mergedPRsList = allMergedPRs || prs.filter(p => p.merged_at);
-  const mergedNodes = mergedPRsList.map(createGraphQLPRNode);
+  // Paginate: only include first 100 nodes (matching real GraphQL behavior)
+  const mergedPageSize = 100;
+  const firstPageMerged = mergedPRsList.slice(0, mergedPageSize);
+  const mergedNodes = firstPageMerged.map(createGraphQLPRNode);
+  const hasMoreMerged = mergedPRsList.length > mergedPageSize;
 
   return {
     data: {
@@ -360,7 +399,7 @@ export function createGraphQLCombinedResponse(prs, allPRCounts = null, allMerged
       },
       allMergedPRs: {
         issueCount: mergedPRsList.length,
-        pageInfo: { hasNextPage: false, endCursor: null },
+        pageInfo: { hasNextPage: hasMoreMerged, endCursor: hasMoreMerged ? 'cursor_100' : null },
         nodes: mergedNodes,
       },
       totalCount: { issueCount: counts.total },
@@ -437,7 +476,7 @@ export async function mockGraphQLAPI(page, options = {}) {
         await route.fulfill({
           status: 200,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body ?? createGraphQLCombinedResponse(prs, allPRCounts)),
+          body: JSON.stringify(body ?? createGraphQLCombinedResponse(prs, allPRCounts, allMergedPRs)),
         });
       }
     } else {
@@ -446,10 +485,30 @@ export async function mockGraphQLAPI(page, options = {}) {
       const isComparisonMergedFetch = queryVar.includes('is:merged') && !queryVar.includes('author:');
 
       if (isComparisonMergedFetch && allMergedPRs !== null) {
+        // Support cursor-based pagination for allMergedPRs
+        const after = reqBody.variables?.after || null;
+        const pageSize = 100;
+        let startIndex = 0;
+        if (after && after.startsWith('cursor_')) {
+          startIndex = parseInt(after.replace('cursor_', ''), 10);
+        }
+        const pageItems = allMergedPRs.slice(startIndex, startIndex + pageSize);
+        const hasNextPage = startIndex + pageSize < allMergedPRs.length;
+        const endCursor = hasNextPage ? `cursor_${startIndex + pageSize}` : null;
+
         await route.fulfill({
           status: 200,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body ?? createGraphQLSearchResponse(allMergedPRs)),
+          body: JSON.stringify({
+            data: {
+              search: {
+                issueCount: allMergedPRs.length,
+                pageInfo: { hasNextPage, endCursor },
+                nodes: pageItems.map(createGraphQLPRNode),
+              },
+              rateLimit: createGraphQLRateLimit(),
+            }
+          }),
         });
       } else {
         await route.fulfill({

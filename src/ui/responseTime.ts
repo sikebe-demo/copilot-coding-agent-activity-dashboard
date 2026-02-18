@@ -6,10 +6,10 @@ import {
     RESPONSE_TIME_OTHERS_CHART_COLORS,
     getChartTheme,
 } from '../../lib';
-import type { PullRequest } from '../../lib';
+import type { PullRequest, AllPRCounts } from '../../lib';
 import { loadChartJS } from './chart';
 
-export async function displayResponseTimeAnalysis(copilotPRs: PullRequest[], allMergedPRs?: PullRequest[]): Promise<void> {
+export async function displayResponseTimeAnalysis(copilotPRs: PullRequest[], allMergedPRs?: PullRequest[], allPRCounts?: AllPRCounts): Promise<void> {
     if (!dom.responseTimeStats || !dom.responseTimeChart || !dom.responseTimeEmpty || !dom.responseTimeSubtitle) return;
 
     // 前回のチャートインスタンスを破棄
@@ -36,6 +36,7 @@ export async function displayResponseTimeAnalysis(copilotPRs: PullRequest[], all
         dom.responseTimeStats.classList.add('hidden');
         dom.responseTimeChart.classList.add('hidden');
         dom.responseTimeSubtitle.classList.add('hidden');
+        if (dom.responseTimeWarning) dom.responseTimeWarning.classList.add('hidden');
         return;
     }
 
@@ -46,11 +47,32 @@ export async function displayResponseTimeAnalysis(copilotPRs: PullRequest[], all
     dom.responseTimeSubtitle.classList.remove('hidden');
 
     const copilotCount = copilotMetrics?.totalMerged ?? 0;
-    const othersCount = othersMetrics?.totalMerged ?? 0;
+    // Use allPRCounts.merged for accurate "other" count when available
+    // (allMergedPRs may be capped at 1000 by GitHub Search API)
+    const othersCount = (allPRCounts && allPRCounts.merged > 0)
+        ? allPRCounts.merged - copilotCount
+        : (othersMetrics?.totalMerged ?? 0);
     if (hasComparisonData) {
         dom.responseTimeSubtitle.textContent = `Based on ${copilotCount} Copilot & ${othersCount} other merged PR${copilotCount + othersCount === 1 ? '' : 's'}`;
     } else {
         dom.responseTimeSubtitle.textContent = `Based on ${copilotCount} Copilot merged PR${copilotCount === 1 ? '' : 's'}`;
+    }
+
+    // Show warning when allMergedPRs data is incomplete due to GitHub API 1000-item limit
+    if (dom.responseTimeWarning) {
+        const totalMergedCount = allPRCounts?.merged ?? 0;
+        const fetchedCount = allMergedPRs?.length ?? 0;
+        if (hasComparisonData && totalMergedCount > fetchedCount) {
+            const othersActualFetched = fetchedCount - copilotCount;
+            if (fetchedCount >= 1000) {
+                dom.responseTimeWarning.textContent = `⚠ Response time statistics for "Others" are based on ${othersActualFetched} of ${othersCount} merged PRs (GitHub API limit: 1,000 items per search)`;
+            } else {
+                dom.responseTimeWarning.textContent = `⚠ Response time statistics for "Others" are based on ${othersActualFetched} of ${othersCount} merged PRs (data retrieval was interrupted, possibly due to API rate limits)`;
+            }
+            dom.responseTimeWarning.classList.remove('hidden');
+        } else {
+            dom.responseTimeWarning.classList.add('hidden');
+        }
     }
 
     // 統計カード生成

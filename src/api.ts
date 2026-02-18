@@ -211,6 +211,27 @@ async function fetchWithGraphQL(
 
             allMergedPRs = convertGraphQLPRs(data.allMergedPRs.nodes);
 
+            // Paginate remaining merged PRs if there are more pages
+            if (data.allMergedPRs.pageInfo.hasNextPage) {
+                let mergedAfter = data.allMergedPRs.pageInfo.endCursor;
+                try {
+                    for (let mergedPage = 2; mergedPage <= 10 && mergedAfter; mergedPage++) {
+                        const mergedResult = await executeGraphQL<SingleSearchQueryData>(
+                            GRAPHQL_SEARCH_QUERY,
+                            { query: mergedAllQuery, first: 100, after: mergedAfter },
+                            token, signal,
+                        );
+                        allMergedPRs.push(...convertGraphQLPRs(mergedResult.data.search.nodes));
+                        rateLimitInfo = convertGraphQLRateLimit(mergedResult.data.rateLimit);
+                        if (!mergedResult.data.search.pageInfo.hasNextPage) break;
+                        mergedAfter = mergedResult.data.search.pageInfo.endCursor;
+                    }
+                } catch (error) {
+                    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+                    console.warn('Error paginating merged PRs (partial data preserved):', error);
+                }
+            }
+
             rateLimitInfo = convertGraphQLRateLimit(data.rateLimit);
             allPRs.push(...convertGraphQLPRs(data.copilotPRs.nodes));
 
@@ -388,14 +409,27 @@ async function fetchComparisonDataGraphQL(
     const mergedQuery = `repo:${owner}/${repo} is:pr is:merged created:${fromDate}..${toDate}`;
 
     if (cachedCounts) {
-        // Counts already available from initial query — just fetch merged PR details
-        const result = await executeGraphQL<SingleSearchQueryData>(
-            GRAPHQL_SEARCH_QUERY,
-            { query: mergedQuery, first: 100, after: null },
-            token, signal,
-        );
-        const allMergedPRs = convertGraphQLPRs(result.data.search.nodes);
-        const rateLimitInfo = convertGraphQLRateLimit(result.data.rateLimit);
+        // Counts already available from initial query — fetch all merged PR details with pagination
+        const allMergedPRs: PullRequest[] = [];
+        let rateLimitInfo: RateLimitInfo | null = null;
+        let after: string | null = null;
+
+        try {
+            for (let page = 1; page <= 10; page++) {
+                const result = await executeGraphQL<SingleSearchQueryData>(
+                    GRAPHQL_SEARCH_QUERY,
+                    { query: mergedQuery, first: 100, after },
+                    token, signal,
+                );
+                allMergedPRs.push(...convertGraphQLPRs(result.data.search.nodes));
+                rateLimitInfo = convertGraphQLRateLimit(result.data.rateLimit);
+                if (!result.data.search.pageInfo.hasNextPage) break;
+                after = result.data.search.pageInfo.endCursor;
+            }
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') throw error;
+            console.warn('Error paginating merged PRs (partial data preserved):', error);
+        }
 
         updateCacheWithComparison(cacheKey, cachedCounts, allMergedPRs, rateLimitInfo);
         return { allPRCounts: cachedCounts, allMergedPRs, rateLimitInfo };
@@ -416,14 +450,35 @@ async function fetchComparisonDataGraphQL(
             token, signal,
         );
 
-        const allMergedPRs = convertGraphQLPRs(result.data.allMergedPRs.nodes);
-        const rateLimitInfo = convertGraphQLRateLimit(result.data.rateLimit);
+        let allMergedPRs = convertGraphQLPRs(result.data.allMergedPRs.nodes);
+        let rateLimitInfo: RateLimitInfo | null = convertGraphQLRateLimit(result.data.rateLimit);
         const allPRCounts: AllPRCounts = {
             total: result.data.totalCount.issueCount,
             merged: result.data.mergedCount.issueCount,
             open: result.data.openCount.issueCount,
             closed: Math.max(0, result.data.totalCount.issueCount - result.data.mergedCount.issueCount - result.data.openCount.issueCount),
         };
+
+        // Paginate remaining merged PRs if there are more pages
+        if (result.data.allMergedPRs.pageInfo.hasNextPage) {
+            let mergedAfter = result.data.allMergedPRs.pageInfo.endCursor;
+            try {
+                for (let mergedPage = 2; mergedPage <= 10 && mergedAfter; mergedPage++) {
+                    const nextResult = await executeGraphQL<SingleSearchQueryData>(
+                        GRAPHQL_SEARCH_QUERY,
+                        { query: mergedQuery, first: 100, after: mergedAfter },
+                        token, signal,
+                    );
+                    allMergedPRs.push(...convertGraphQLPRs(nextResult.data.search.nodes));
+                    rateLimitInfo = convertGraphQLRateLimit(nextResult.data.rateLimit);
+                    if (!nextResult.data.search.pageInfo.hasNextPage) break;
+                    mergedAfter = nextResult.data.search.pageInfo.endCursor;
+                }
+            } catch (error) {
+                if (error instanceof DOMException && error.name === 'AbortError') throw error;
+                console.warn('Error paginating merged PRs (partial data preserved):', error);
+            }
+        }
 
         updateCacheWithComparison(cacheKey, allPRCounts, allMergedPRs, rateLimitInfo);
         return { allPRCounts, allMergedPRs, rateLimitInfo };
@@ -462,7 +517,7 @@ async function fetchComparisonDataREST(
 // ============================================================================
 
 // Fetch all merged PRs in the date range (all authors) for response time comparison.
-// Limited to first page (100 items) to conserve API calls.
+// Paginates through all pages (up to 1000 results, GitHub Search API limit).
 async function fetchAllMergedPRsData(
     owner: string,
     repo: string,
@@ -473,26 +528,36 @@ async function fetchAllMergedPRsData(
 ): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null }> {
     const query = `repo:${owner}/${repo} is:pr is:merged created:${fromDate}..${toDate}`;
     const perPage = 100;
+    const allPRs: PullRequest[] = [];
+    let rateLimitInfo: RateLimitInfo | null = null;
+    let page = 1;
 
     try {
-        const url = buildSearchUrl(query, perPage, 1);
-        const response = await fetch(url, { headers, signal });
-        const rateLimitInfo = extractRateLimitInfo(response.headers);
+        while (true) {
+            const url = buildSearchUrl(query, perPage, page);
+            const response = await fetch(url, { headers, signal });
+            rateLimitInfo = extractRateLimitInfo(response.headers) ?? rateLimitInfo;
 
-        if (!response.ok) {
-            console.warn('Failed to fetch all merged PRs:', response.status);
-            return { prs: [], rateLimitInfo };
+            if (!response.ok) {
+                console.warn('Failed to fetch all merged PRs:', response.status);
+                break;
+            }
+
+            const searchResponse: SearchResponse = await response.json();
+            const prs = convertSearchItemsToPRs(searchResponse.items);
+            allPRs.push(...prs);
+
+            if (prs.length < perPage || allPRs.length >= searchResponse.total_count) break;
+            if (page >= 10) break; // GitHub Search API limit: 1000 results
+            page++;
         }
-
-        const searchResponse: SearchResponse = await response.json();
-        const prs = convertSearchItemsToPRs(searchResponse.items);
-        return { prs, rateLimitInfo };
+        return { prs: allPRs, rateLimitInfo };
     } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
             throw error;
         }
         console.warn('Error fetching all merged PRs:', error);
-        return { prs: [], rateLimitInfo: null };
+        return { prs: allPRs.length > 0 ? allPRs : [], rateLimitInfo };
     }
 }
 
