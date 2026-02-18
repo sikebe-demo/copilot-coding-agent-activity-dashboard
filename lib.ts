@@ -714,16 +714,17 @@ export function formatDuration(hours: number): string {
 
 export function generateResponseTimeStatsHtml(metrics: ResponseTimeMetrics, othersMetrics?: ResponseTimeMetrics | null): string {
   const entries = [
-    { label: 'Average Response Time', value: metrics.average, othersValue: othersMetrics?.average },
-    { label: 'Median Response Time',  value: metrics.median,  othersValue: othersMetrics?.median },
-    { label: 'Fastest PR',            value: metrics.fastest, othersValue: othersMetrics?.fastest },
-    { label: 'Slowest PR',            value: metrics.slowest, othersValue: othersMetrics?.slowest },
+    { label: 'Average Response Time', value: metrics.average, othersValue: othersMetrics?.average, description: 'The arithmetic mean of the time from PR creation to merge across all merged PRs.' },
+    { label: 'Median Response Time',  value: metrics.median,  othersValue: othersMetrics?.median,  description: 'The middle value of response times when sorted. Less affected by outliers than the average.' },
+    { label: 'Fastest PR',            value: metrics.fastest, othersValue: othersMetrics?.fastest, description: 'The shortest time from PR creation to merge among all merged PRs.' },
+    { label: 'Slowest PR',            value: metrics.slowest, othersValue: othersMetrics?.slowest, description: 'The longest time from PR creation to merge among all merged PRs.' },
   ];
 
   const showComparison = othersMetrics !== undefined;
 
   return entries.map(entry => {
     const mainValue = formatDuration(entry.value);
+    const tooltipId = entry.label.toLowerCase().replace(/\s+/g, '-') + '-tooltip';
 
     const valueHtml = showComparison
       ? `<div class="space-y-1.5">
@@ -750,6 +751,14 @@ export function generateResponseTimeStatsHtml(metrics: ResponseTimeMetrics, othe
             </svg>
           </div>
           <span class="text-sm font-medium text-slate-600 dark:text-slate-300">${escapeHtml(entry.label)}</span>
+          <div class="relative group">
+            <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900" aria-label="${escapeHtml(entry.label)} description" aria-describedby="${tooltipId}">
+              <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-current text-[10px] font-bold leading-none" aria-hidden="true">?</span>
+            </button>
+            <div id="${tooltipId}" class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50" role="tooltip">
+              <p>${escapeHtml(entry.description)}</p>
+            </div>
+          </div>
         </div>
         ${valueHtml}
       </div>
