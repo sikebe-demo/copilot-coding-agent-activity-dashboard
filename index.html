@@ -221,9 +221,7 @@
             <!-- Stats Grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <!-- Total PRs -->
-                <div class="tooltip" tabindex="0" role="group" aria-describedby="tooltip-total-prs" data-tooltip="Total number of PRs created by GitHub Copilot Coding Agent">
-                <span id="tooltip-total-prs" class="sr-only">Total number of PRs created by GitHub Copilot Coding Agent</span>
-                <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
+                <div class="glass-card rounded-2xl p-6 relative overflow-visible">
                     <div class="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-indigo-500/10 to-purple-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
@@ -239,16 +237,23 @@
                                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                             </svg>
                         </div>
-                        <p class="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Total PRs</p>
+                        <div class="flex items-center gap-1 mb-1">
+                            <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Total PRs</p>
+                            <div class="relative group">
+                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Total PRs description">
+                                    <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-current text-[10px] font-bold leading-none" aria-hidden="true">?</span>
+                                </button>
+                                <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                                    <p>Total number of PRs created by Copilot Coding Agent in the selected period.</p>
+                                </div>
+                            </div>
+                        </div>
                         <div id="totalPRs" class="flex items-baseline"><span class="text-4xl font-bold text-slate-800 dark:text-slate-100">0</span></div>
                     </div>
                 </div>
-                </div>
 
                 <!-- Merged PRs -->
-                <div class="tooltip" tabindex="0" role="group" aria-describedby="tooltip-merged-prs" data-tooltip="Number of merged PRs">
-                <span id="tooltip-merged-prs" class="sr-only">Number of merged PRs</span>
-                <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
+                <div class="glass-card rounded-2xl p-6 relative overflow-visible">
                     <div class="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-green-500/10 to-emerald-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
@@ -260,16 +265,23 @@
                             </div>
                             <span class="px-2 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Success</span>
                         </div>
-                        <p class="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Merged</p>
+                        <div class="flex items-center gap-1 mb-1">
+                            <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Merged</p>
+                            <div class="relative group">
+                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Merged PRs description">
+                                    <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-current text-[10px] font-bold leading-none" aria-hidden="true">?</span>
+                                </button>
+                                <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                                    <p>Number of PRs that were successfully reviewed and merged into the codebase.</p>
+                                </div>
+                            </div>
+                        </div>
                         <div id="mergedPRs" class="flex items-baseline"><span class="text-4xl font-bold text-green-700 dark:text-green-400">0</span></div>
                     </div>
                 </div>
-                </div>
 
                 <!-- Closed PRs -->
-                <div class="tooltip" tabindex="0" role="group" aria-describedby="tooltip-closed-prs" data-tooltip="Number of PRs closed without merging">
-                <span id="tooltip-closed-prs" class="sr-only">Number of PRs closed without merging</span>
-                <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
+                <div class="glass-card rounded-2xl p-6 relative overflow-visible">
                     <div class="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-red-500/10 to-rose-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
@@ -282,16 +294,23 @@
                             </div>
                             <span class="px-2 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">Not Adopted</span>
                         </div>
-                        <p class="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Closed</p>
+                        <div class="flex items-center gap-1 mb-1">
+                            <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Closed</p>
+                            <div class="relative group">
+                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Closed PRs description">
+                                    <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-current text-[10px] font-bold leading-none" aria-hidden="true">?</span>
+                                </button>
+                                <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                                    <p>Number of PRs that were closed without being merged into the codebase.</p>
+                                </div>
+                            </div>
+                        </div>
                         <div id="closedPRs" class="flex items-baseline"><span class="text-4xl font-bold text-red-600 dark:text-red-400">0</span></div>
                     </div>
                 </div>
-                </div>
 
                 <!-- Open PRs -->
-                <div class="tooltip" tabindex="0" role="group" aria-describedby="tooltip-open-prs" data-tooltip="Number of currently open PRs">
-                <span id="tooltip-open-prs" class="sr-only">Number of currently open PRs</span>
-                <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
+                <div class="glass-card rounded-2xl p-6 relative overflow-visible">
                     <div class="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-blue-500/10 to-cyan-500/10 rounded-full -translate-y-16 translate-x-16"></div>
                     <div class="relative">
                         <div class="flex items-center justify-between mb-4">
@@ -304,10 +323,43 @@
                             </div>
                             <span class="px-2 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">In Progress</span>
                         </div>
-                        <p class="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Open</p>
+                        <div class="flex items-center gap-1 mb-1">
+                            <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Open</p>
+                            <div class="relative group">
+                                <button type="button" class="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Open PRs description">
+                                    <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-current text-[10px] font-bold leading-none" aria-hidden="true">?</span>
+                                </button>
+                                <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                                    <p>Number of PRs that are currently open and awaiting review or action.</p>
+                                </div>
+                            </div>
+                        </div>
                         <div id="openPRs" class="flex items-baseline"><span class="text-4xl font-bold text-blue-600 dark:text-blue-400">0</span></div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Comparison Data Banner -->
+            <div id="comparisonBanner" class="hidden glass-card rounded-2xl p-4 border-2 border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30">
+                <div class="flex items-center justify-between flex-wrap gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 rounded-lg bg-linear-to-br from-indigo-500 to-purple-500">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M16 8v8m-8-5v5m4-7v7M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-slate-700 dark:text-slate-200">Repository-wide comparison data is not loaded yet</p>
+                            <p class="text-xs text-slate-500 dark:text-slate-400">Load to see PR ratios (Copilot / Total) and response time comparison (~4 API calls)</p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        id="comparisonButton"
+                        class="px-4 py-2 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-semibold shadow cursor-pointer hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    >
+                        Load Repository Comparison
+                    </button>
                 </div>
             </div>
 
@@ -323,6 +375,15 @@
                             </svg>
                         </div>
                         <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Merge Success Rate</h2>
+                        <div class="relative group">
+                            <button type="button" class="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="Merge Success Rate description">
+                                <span class="inline-flex items-center justify-center w-5 h-5 rounded-full border border-current text-xs font-bold leading-none" aria-hidden="true">?</span>
+                            </button>
+                            <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                                <p class="font-semibold text-slate-800 dark:text-slate-100 mb-1">Merge Success Rate</p>
+                                <p>Percentage of Copilot Coding Agent PRs that were merged, calculated as merged PRs divided by total PRs.</p>
+                            </div>
+                        </div>
                     </div>
                     <span id="mergeRateValue" class="text-3xl font-bold text-green-700 dark:text-green-400">0%</span>
                 </div>
@@ -356,6 +417,34 @@
                     <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Daily PR Trend</h2>
                 </div>
                 <div id="prChart" class="h-100 w-full"></div>
+            </div>
+
+            <!-- Response Time Analysis -->
+            <div class="glass-card rounded-2xl p-6" id="responseTimeSection">
+                <div class="flex items-center space-x-3 mb-6">
+                    <div class="p-2 rounded-lg bg-linear-to-br from-amber-500 to-orange-500">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Response Time Analysis</h2>
+                    <div class="relative group">
+                        <button type="button" class="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" aria-label="How Response Time is calculated">
+                            <span class="inline-flex items-center justify-center w-5 h-5 rounded-full border border-current text-xs font-bold leading-none" aria-hidden="true">?</span>
+                        </button>
+                        <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50" role="tooltip">
+                            <p class="font-semibold text-slate-800 dark:text-slate-100 mb-1">How Response Time is Calculated</p>
+                            <p>Measures the elapsed time from when a PR was created (<code class="text-xs bg-slate-100 dark:bg-slate-700 px-1 rounded">created_at</code>) to when it was merged (<code class="text-xs bg-slate-100 dark:bg-slate-700 px-1 rounded">merged_at</code>). Unmerged PRs are excluded.</p>
+                        </div>
+                    </div>
+                </div>
+                <p id="responseTimeSubtitle" class="text-sm text-slate-500 dark:text-slate-400 mt-1 hidden"></p>
+                <div id="responseTimeStats" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 hidden"></div>
+                <div id="responseTimeChart" class="h-64 w-full hidden"></div>
+                <div id="responseTimeEmpty" class="text-center py-8 hidden">
+                    <p class="text-slate-500 dark:text-slate-400">No merged PRs found for response time analysis</p>
+                </div>
             </div>
 
             <!-- PR List -->

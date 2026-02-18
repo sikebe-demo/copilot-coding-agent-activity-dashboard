@@ -108,35 +108,23 @@ test.describe('Loading Progress', () => {
     await expect(page.locator('#loadingProgress')).toBeHidden();
   });
 
-  test('should update loading title for repository stats phase', async ({ page }) => {
+  test('should update loading title for Copilot PRs phase', async ({ page }) => {
     await page.route('https://api.github.com/search/issues**', async route => {
-      const url = route.request().url();
-
-      if (url.includes('author:app/copilot-swe-agent')) {
-        // Copilot PRs search - small delay to allow phase change to render
-        await new Promise(resolve => setTimeout(resolve, 50));
-        await route.fulfill({
-          status: 200,
-          headers: createRateLimitHeaders(),
-          body: JSON.stringify(createSearchResponse([createPR()]))
-        });
-      } else {
-        // All PRs count search - slightly longer delay so the phase title is observable
-        await new Promise(resolve => setTimeout(resolve, 200));
-        await route.fulfill({
-          status: 200,
-          headers: createRateLimitHeaders(),
-          body: JSON.stringify({ total_count: 100, incomplete_results: false, items: [] })
-        });
-      }
+      // Small delay to allow phase change to render
+      await new Promise(resolve => setTimeout(resolve, 200));
+      await route.fulfill({
+        status: 200,
+        headers: createRateLimitHeaders(),
+        body: JSON.stringify(createSearchResponse([createPR()]))
+      });
     });
 
     await submitSearch(page);
 
-    // Verify loading title updates to repository stats phase
-    await expect(page.locator('#loadingTitle')).toContainText('repository stats', { timeout: 5000 });
+    // Verify loading title shows Copilot PRs phase
+    await expect(page.locator('#loadingTitle')).toContainText('Copilot PRs', { timeout: 5000 });
 
-    // Verify final state: results are displayed after all phases complete
+    // Verify final state: results are displayed after phase completes
     await waitForResults(page);
     await expect(page.locator('#results')).toBeVisible();
   });

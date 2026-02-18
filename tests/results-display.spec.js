@@ -40,7 +40,7 @@ test.describe('Results Display', () => {
     await expect(page.locator('#mergeRateValue')).toContainText('50%');
   });
 
-  test('should display Copilot ratio in each stats card', async ({ page }) => {
+  test('should display Copilot ratio in each stats card after loading comparison', async ({ page }) => {
     const copilotPRs = createPRs([
       { title: 'Copilot PR 1', state: 'closed', merged_at: getDaysAgoISO(5), created_at: getDaysAgoISO(5) },
       { title: 'Copilot PR 2', state: 'open', created_at: getDaysAgoISO(3) },
@@ -89,6 +89,14 @@ test.describe('Results Display', () => {
 
     await submitSearch(page);
     await waitForResults(page);
+
+    // Initially shows copilot-only counts (no ratio)
+    await expect(page.locator('#totalPRs')).toContainText('3');
+    await expect(page.locator('#comparisonBanner')).toBeVisible();
+
+    // Click the "Load Repository Comparison" button to load ratios
+    await page.click('#comparisonButton');
+    await expect(page.locator('#comparisonBanner')).toBeHidden();
 
     await expect(page.locator('#totalPRs')).toContainText('3');
     await expect(page.locator('#totalPRs')).toContainText('/ 10');

@@ -1,11 +1,11 @@
 import { state, dom, cacheDOMElements } from './src/state';
-import { fetchCopilotPRsWithCache } from './src/api';
+import { fetchCopilotPRsWithCache, fetchComparisonData } from './src/api';
 import { initializeTheme } from './src/ui/theme';
 import { initializeFilters } from './src/ui/filters';
 import { initializePRListEvents } from './src/ui/prList';
 import { showLoading, hideLoading, updateLoadingPhase, updateLoadingProgress } from './src/ui/loading';
 import { showError, hideError } from './src/ui/error';
-import { displayResults, hideResults } from './src/ui/results';
+import { displayResults, hideResults, updateComparisonDisplay } from './src/ui/results';
 import { displayRateLimitInfo, hideRateLimitInfo } from './src/ui/rateLimit';
 import { parseRepoInput, validateDateRange } from './lib';
 
@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeForm();
     initializeFilters();
     initializePRListEvents();
+    initializeComparisonButton();
     setDefaultDates();
 });
 
@@ -97,7 +98,11 @@ async function handleFormSubmit(e: Event): Promise<void> {
         );
         // Ignore stale responses from earlier searches
         if (requestId !== state.currentRequestId) return;
-        await displayResults(result.prs, fromDate, toDate, result.allPRCounts);
+
+        // Store search params for lazy comparison loading
+        state.lastSearchParams = { owner, repo, fromDate, toDate, token };
+
+        await displayResults(result.prs, fromDate, toDate, result.allPRCounts, result.allMergedPRs);
         if (result.rateLimitInfo) {
             displayRateLimitInfo(result.rateLimitInfo, result.fromCache);
         }
@@ -110,6 +115,41 @@ async function handleFormSubmit(e: Event): Promise<void> {
     } finally {
         if (requestId === state.currentRequestId) {
             hideLoading();
+        }
+    }
+}
+
+// Comparison data lazy loading
+function initializeComparisonButton(): void {
+    dom.comparisonButton?.addEventListener('click', handleLoadComparison);
+}
+
+async function handleLoadComparison(): Promise<void> {
+    if (!state.lastSearchParams || state.comparisonLoaded) return;
+
+    const { owner, repo, fromDate, toDate, token } = state.lastSearchParams;
+    const button = dom.comparisonButton;
+
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Loading...';
+    }
+
+    try {
+        const abortController = new AbortController();
+        const result = await fetchComparisonData(owner, repo, fromDate, toDate, token, abortController.signal);
+
+        updateComparisonDisplay(result.allPRCounts, result.allMergedPRs);
+        if (result.rateLimitInfo) {
+            displayRateLimitInfo(result.rateLimitInfo, false);
+        }
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        showError(error instanceof Error ? error.message : 'Failed to load comparison data');
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Load Repository Comparison';
         }
     }
 }

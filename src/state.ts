@@ -3,6 +3,14 @@ import type { PullRequest, PRFilterStatus } from '../lib';
 
 type ChartStatic = typeof import('chart.js').Chart;
 
+export interface SearchParams {
+    owner: string;
+    repo: string;
+    fromDate: string;
+    toDate: string;
+    token: string;
+}
+
 export interface AppState {
     rateLimitCountdownInterval: number | null;
     currentRequestId: number;
@@ -14,6 +22,9 @@ export interface AppState {
     activeStatusFilter: PRFilterStatus;
     activeSearchText: string;
     currentAbortController: AbortController | null;
+    responseTimeChartInstance: Chart | null;
+    lastSearchParams: SearchParams | null;
+    comparisonLoaded: boolean;
 }
 
 export const state: AppState = {
@@ -27,6 +38,9 @@ export const state: AppState = {
     activeStatusFilter: 'all',
     activeSearchText: '',
     currentAbortController: null,
+    responseTimeChartInstance: null,
+    lastSearchParams: null,
+    comparisonLoaded: false,
 };
 
 export interface DOMElements {
@@ -57,6 +71,12 @@ export interface DOMElements {
     loadingProgressText: HTMLElement | null;
     loadingTitle: HTMLElement | null;
     loadingMessage: HTMLElement | null;
+    responseTimeSubtitle: HTMLElement | null;
+    responseTimeStats: HTMLElement | null;
+    responseTimeChart: HTMLElement | null;
+    responseTimeEmpty: HTMLElement | null;
+    comparisonBanner: HTMLElement | null;
+    comparisonButton: HTMLButtonElement | null;
 }
 
 export const dom: DOMElements = {
@@ -87,6 +107,12 @@ export const dom: DOMElements = {
     loadingProgressText: null,
     loadingTitle: null,
     loadingMessage: null,
+    responseTimeSubtitle: null,
+    responseTimeStats: null,
+    responseTimeChart: null,
+    responseTimeEmpty: null,
+    comparisonBanner: null,
+    comparisonButton: null,
 };
 
 export function cacheDOMElements(): void {
@@ -117,4 +143,10 @@ export function cacheDOMElements(): void {
     dom.loadingProgressText = document.getElementById('loadingProgressText');
     dom.loadingTitle = document.getElementById('loadingTitle');
     dom.loadingMessage = document.getElementById('loadingMessage');
+    dom.responseTimeSubtitle = document.getElementById('responseTimeSubtitle');
+    dom.responseTimeStats = document.getElementById('responseTimeStats');
+    dom.responseTimeChart = document.getElementById('responseTimeChart');
+    dom.responseTimeEmpty = document.getElementById('responseTimeEmpty');
+    dom.comparisonBanner = document.getElementById('comparisonBanner');
+    dom.comparisonButton = document.getElementById('comparisonButton') as HTMLButtonElement | null;
 }

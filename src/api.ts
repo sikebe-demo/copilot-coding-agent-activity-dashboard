@@ -2,6 +2,7 @@ import {
     getCacheKey,
     getFromCache,
     saveToCache,
+    updateCacheWithComparison,
     clearOldCache,
     extractRateLimitInfo,
     getApiErrorMessage,
@@ -28,7 +29,8 @@ export interface FetchResult {
     prs: PullRequest[];
     rateLimitInfo: RateLimitInfo | null;
     fromCache: boolean;
-    allPRCounts: AllPRCounts;
+    allPRCounts?: AllPRCounts;
+    allMergedPRs?: PullRequest[];
 }
 
 export async function fetchCopilotPRsWithCache(
@@ -56,14 +58,15 @@ export async function fetchCopilotPRsWithCache(
             prs: cached.data,
             rateLimitInfo: cached.rateLimitInfo,
             fromCache: true,
-            allPRCounts: cached.allPRCounts
+            allPRCounts: cached.allPRCounts,
+            allMergedPRs: cached.allMergedPRs
         };
     }
 
     const result = await fetchCopilotPRsWithSearchAPI(owner, repo, fromDate, toDate, token, signal, callbacks);
 
-    // Save to cache
-    saveToCache(cacheKey, result.prs, result.rateLimitInfo, result.allPRCounts);
+    // Save to cache (without comparison data initially)
+    saveToCache(cacheKey, result.prs, result.rateLimitInfo);
 
     return { ...result, fromCache: false };
 }
@@ -78,7 +81,7 @@ async function fetchCopilotPRsWithSearchAPI(
     token: string,
     signal: AbortSignal,
     callbacks: LoadingCallbacks
-): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null; allPRCounts: AllPRCounts }> {
+): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null }> {
     const headers = buildApiHeaders(token);
 
     // Build search query for Copilot PRs within date range
@@ -162,13 +165,93 @@ async function fetchCopilotPRsWithSearchAPI(
         );
     }
 
-    // Update phase for fetching all PR counts
-    callbacks.updatePhase('Fetching repository stats...', 'Loading PR statistics for comparison');
+    return {
+        prs: allPRs,
+        rateLimitInfo,
+    };
+}
 
-    // Fetch all PR counts (total, merged, closed, open) for all authors
-    const allPRCounts = await fetchAllPRCounts(owner, repo, fromDate, toDate, headers, rateLimitInfo, signal);
+export interface ComparisonResult {
+    allPRCounts: AllPRCounts;
+    allMergedPRs: PullRequest[];
+    rateLimitInfo: RateLimitInfo | null;
+}
 
-    return { prs: allPRs, rateLimitInfo: allPRCounts.rateLimitInfo ?? rateLimitInfo, allPRCounts: allPRCounts.counts };
+// Fetch comparison data (allPRCounts + allMergedPRs) on demand to save API calls.
+// This is separated from the main fetch so that the initial search is fast and cheap.
+export async function fetchComparisonData(
+    owner: string,
+    repo: string,
+    fromDate: string,
+    toDate: string,
+    token: string,
+    signal: AbortSignal,
+): Promise<ComparisonResult> {
+    const headers = buildApiHeaders(token);
+    const hasToken = Boolean(token);
+    const cacheKey = getCacheKey(owner, repo, fromDate, toDate, hasToken);
+
+    // Check if comparison data is already cached
+    const cached = getFromCache(cacheKey);
+    if (cached?.allPRCounts && cached?.allMergedPRs) {
+        return {
+            allPRCounts: cached.allPRCounts,
+            allMergedPRs: cached.allMergedPRs,
+            rateLimitInfo: cached.rateLimitInfo,
+        };
+    }
+
+    // Fetch counts and merged PRs in parallel
+    const [countsResult, mergedResult] = await Promise.all([
+        fetchAllPRCounts(owner, repo, fromDate, toDate, headers, null, signal),
+        fetchAllMergedPRsData(owner, repo, fromDate, toDate, headers, signal),
+    ]);
+
+    const result: ComparisonResult = {
+        allPRCounts: countsResult.counts,
+        allMergedPRs: mergedResult.prs,
+        rateLimitInfo: mergedResult.rateLimitInfo ?? countsResult.rateLimitInfo,
+    };
+
+    // Update existing cache entry with comparison data
+    updateCacheWithComparison(cacheKey, result.allPRCounts, result.allMergedPRs, result.rateLimitInfo);
+
+    return result;
+}
+
+// Fetch all merged PRs in the date range (all authors) for response time comparison.
+// Limited to first page (100 items) to conserve API calls.
+async function fetchAllMergedPRsData(
+    owner: string,
+    repo: string,
+    fromDate: string,
+    toDate: string,
+    headers: HeadersInit,
+    signal: AbortSignal,
+): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null }> {
+    const query = `repo:${owner}/${repo} is:pr is:merged created:${fromDate}..${toDate}`;
+    const perPage = 100;
+
+    try {
+        const url = buildSearchUrl(query, perPage, 1);
+        const response = await fetch(url, { headers, signal });
+        const rateLimitInfo = extractRateLimitInfo(response.headers);
+
+        if (!response.ok) {
+            console.warn('Failed to fetch all merged PRs:', response.status);
+            return { prs: [], rateLimitInfo };
+        }
+
+        const searchResponse: SearchResponse = await response.json();
+        const prs = convertSearchItemsToPRs(searchResponse.items);
+        return { prs, rateLimitInfo };
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw error;
+        }
+        console.warn('Error fetching all merged PRs:', error);
+        return { prs: [], rateLimitInfo: null };
+    }
 }
 
 // Fetch counts of all PRs in the repository within the date range (all authors)

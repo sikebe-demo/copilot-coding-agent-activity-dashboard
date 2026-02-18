@@ -62,9 +62,19 @@ await mockSearchAPI(page, { prs });
 - **Cache key includes auth**: Separate cache for authenticated vs unauthenticated requests
 - **Input validation**: `isValidGitHubName()` prevents path traversal in repo names
 
+## Lazy Loading Comparison Data
+To conserve API calls (especially for large repos like microsoft/vscode), the dashboard uses a two-phase approach:
+1. **Initial search**: Only fetches Copilot PRs (~1-2 API calls)
+2. **On-demand comparison**: User clicks "Load Repository Comparison" button to fetch `allPRCounts` (3 calls) + `allMergedPRs` (1 call, limited to 100 items)
+
+Relevant functions:
+- `fetchCopilotPRsWithCache()` — initial search
+- `fetchComparisonData()` — lazy-loaded comparison data
+- `updateCacheWithComparison()` — updates existing cache entry with comparison data
+
 ## Cache Versioning
-When modifying `CacheEntry` schema (adding/removing/renaming fields), bump `CACHE_VERSION` in `app.ts`:
+When modifying `CacheEntry` schema (adding/removing/renaming fields), bump `CACHE_VERSION` in `lib.ts`:
 ```typescript
-const CACHE_VERSION = 'v2';  // Increment to 'v3', 'v4', etc.
+const CACHE_VERSION = 'v4';  // Increment to 'v5', 'v6', etc.
 ```
-This invalidates old cached entries automatically. Current version: **v2** (added `allPRCounts` field).
+This invalidates old cached entries automatically. Current version: **v4** (made `allPRCounts`/`allMergedPRs` optional for lazy loading).

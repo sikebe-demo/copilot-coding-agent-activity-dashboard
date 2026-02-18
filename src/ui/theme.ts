@@ -1,5 +1,6 @@
 import { state, dom } from '../state';
 import { updateChartTheme } from './chart';
+import { updateResponseTimeChartTheme } from './responseTime';
 
 export function initializeTheme(): void {
     const savedTheme = localStorage.getItem('theme') || 'light';
@@ -35,6 +36,10 @@ export function toggleTheme(): void {
     // Update chart if it exists
     if (state.chartInstance) {
         updateChartTheme();
+    }
+
+    if (state.responseTimeChartInstance) {
+        updateResponseTimeChartTheme();
     }
 }
 

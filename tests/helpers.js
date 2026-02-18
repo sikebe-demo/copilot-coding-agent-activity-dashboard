@@ -179,6 +179,7 @@ export function createRateLimitHeaders(remaining = 4999, limit = 5000, used = 1)
 export async function mockSearchAPI(page, options = {}) {
   const {
     prs = [],
+    allMergedPRs = null,
     status = 200,
     headers = {},
     body = null,
@@ -193,6 +194,24 @@ export async function mockSearchAPI(page, options = {}) {
     if (delay > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
+
+    // If allMergedPRs is provided, differentiate queries
+    if (allMergedPRs !== null) {
+      const url = route.request().url();
+      const queryParam = new URL(url).searchParams.get('q') || '';
+      const perPage = new URL(url).searchParams.get('per_page') || '';
+
+      // "All merged PRs" query: has is:merged, no author:, and per_page != 1
+      if (queryParam.includes('is:merged') && !queryParam.includes('author:') && perPage !== '1') {
+        await route.fulfill({
+          status,
+          headers: { ...createRateLimitHeaders(), ...headers },
+          body: JSON.stringify(createSearchResponse(allMergedPRs))
+        });
+        return;
+      }
+    }
+
     await route.fulfill({
       status,
       headers: { ...createRateLimitHeaders(), ...headers },
