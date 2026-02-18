@@ -48,7 +48,7 @@ test.describe('Loading Progress', () => {
       const pageNum = Number(searchParams.get('page') || '1');
 
       // Small delay to allow progress UI to render
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       // Copilot PR search (paginated)
       if (query.includes('author:app/copilot-swe-agent')) {

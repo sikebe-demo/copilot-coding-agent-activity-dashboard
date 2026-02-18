@@ -171,6 +171,37 @@
   @apply ring-offset-slate-900;
 }
 
+/* Indeterminate progress bar animation */
+.progress-indeterminate {
+  width: 100% !important;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--color-indigo-500) 30%,
+    var(--color-purple-500) 50%,
+    var(--color-indigo-500) 70%,
+    transparent 100%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: indeterminate-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes indeterminate-slide {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
 /* Merge Rate Bar - initial width 0% (dynamically updated by JavaScript) */
 #mergeRateBar {
   width: 0%;

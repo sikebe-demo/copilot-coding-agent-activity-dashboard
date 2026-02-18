@@ -21,7 +21,9 @@ export function hideLoading(): void {
 export function resetLoadingProgress(): void {
     if (dom.loadingProgress) dom.loadingProgress.classList.add('hidden');
     if (dom.loadingProgressBar) {
-        (dom.loadingProgressBar as HTMLElement).style.width = '0%';
+        const bar = dom.loadingProgressBar as HTMLElement;
+        bar.style.width = '0%';
+        bar.classList.remove('progress-indeterminate');
         dom.loadingProgressBar.setAttribute('aria-valuenow', '0');
     }
     if (dom.loadingProgressText) dom.loadingProgressText.textContent = '';
@@ -29,11 +31,25 @@ export function resetLoadingProgress(): void {
     if (dom.loadingMessage) dom.loadingMessage.textContent = DEFAULT_LOADING_MESSAGE;
 }
 
+export function showIndeterminateProgress(message: string): void {
+    if (dom.loadingProgress) dom.loadingProgress.classList.remove('hidden');
+    if (dom.loadingProgressBar) {
+        const bar = dom.loadingProgressBar as HTMLElement;
+        bar.style.width = '0%';
+        bar.classList.add('progress-indeterminate');
+        bar.setAttribute('aria-valuenow', '0');
+    }
+    if (dom.loadingProgressText) dom.loadingProgressText.textContent = '';
+    if (dom.loadingMessage) dom.loadingMessage.textContent = message;
+}
+
 export function updateLoadingProgress(current: number, total: number, message: string): void {
     if (dom.loadingProgress) dom.loadingProgress.classList.remove('hidden');
     if (dom.loadingProgressBar && total > 0) {
+        const bar = dom.loadingProgressBar as HTMLElement;
+        bar.classList.remove('progress-indeterminate');
         const percent = Math.min(Math.round((current / total) * 100), 100);
-        (dom.loadingProgressBar as HTMLElement).style.width = `${percent}%`;
+        bar.style.width = `${percent}%`;
         dom.loadingProgressBar.setAttribute('aria-valuenow', String(percent));
     }
     if (dom.loadingProgressText) dom.loadingProgressText.textContent = `${current} / ${total}`;

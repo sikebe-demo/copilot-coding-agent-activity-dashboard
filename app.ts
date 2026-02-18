@@ -3,7 +3,7 @@ import { fetchCopilotPRsWithCache, fetchComparisonData } from './src/api';
 import { initializeTheme } from './src/ui/theme';
 import { initializeFilters } from './src/ui/filters';
 import { initializePRListEvents } from './src/ui/prList';
-import { showLoading, hideLoading, updateLoadingPhase, updateLoadingProgress } from './src/ui/loading';
+import { showLoading, hideLoading, updateLoadingPhase, updateLoadingProgress, showIndeterminateProgress } from './src/ui/loading';
 import { showError, hideError } from './src/ui/error';
 import { displayResults, hideResults, updateComparisonDisplay } from './src/ui/results';
 import { displayRateLimitInfo, hideRateLimitInfo } from './src/ui/rateLimit';
@@ -94,7 +94,7 @@ async function handleFormSubmit(e: Event): Promise<void> {
         const result = await fetchCopilotPRsWithCache(
             owner, repo, fromDate, toDate, token,
             state.currentAbortController.signal,
-            { updatePhase: updateLoadingPhase, updateProgress: updateLoadingProgress }
+            { updatePhase: updateLoadingPhase, updateProgress: updateLoadingProgress, showIndeterminate: showIndeterminateProgress }
         );
         // Ignore stale responses from earlier searches
         if (requestId !== state.currentRequestId) return;

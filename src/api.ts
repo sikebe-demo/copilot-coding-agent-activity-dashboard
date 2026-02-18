@@ -31,6 +31,7 @@ import type {
 export interface LoadingCallbacks {
     updatePhase: (phase: string, message: string) => void;
     updateProgress: (current: number, total: number, message: string) => void;
+    showIndeterminate: (message: string) => void;
 }
 
 export interface FetchResult {
@@ -138,16 +139,20 @@ export async function fetchCopilotPRsWithCache(
         let allPRCounts: AllPRCounts | undefined;
         let allMergedPRs: PullRequest[] | undefined;
         try {
-            callbacks.updatePhase('Fetching comparison data...', 'Loading repository statistics and merged PRs');
+            callbacks.updatePhase('Fetching comparison data...', 'Loading repository statistics');
+            callbacks.showIndeterminate('Loading repository statistics...');
             const headers = buildApiHeaders(token);
-            const [countsResult, mergedResult] = await Promise.all([
-                fetchAllPRCounts(owner, repo, fromDate, toDate, headers, null, signal),
-                fetchAllMergedPRsData(owner, repo, fromDate, toDate, headers, signal),
-            ]);
+
+            // Fetch counts first (fast, 3 parallel calls with per_page=1)
+            const countsResult = await fetchAllPRCounts(owner, repo, fromDate, toDate, headers, null, signal);
             allPRCounts = countsResult.counts;
+            if (countsResult.rateLimitInfo) result.rateLimitInfo = countsResult.rateLimitInfo;
+
+            // Fetch merged PRs with progress reporting
+            callbacks.updatePhase('Fetching merged PRs...', 'Loading merged PRs for comparison');
+            const mergedResult = await fetchAllMergedPRsData(owner, repo, fromDate, toDate, headers, signal, callbacks);
             allMergedPRs = mergedResult.prs;
-            const latestRateLimitInfo = mergedResult.rateLimitInfo ?? countsResult.rateLimitInfo;
-            if (latestRateLimitInfo) result.rateLimitInfo = latestRateLimitInfo;
+            if (mergedResult.rateLimitInfo) result.rateLimitInfo = mergedResult.rateLimitInfo;
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') throw error;
             console.warn('Failed to fetch comparison data:', error);
@@ -179,6 +184,7 @@ async function fetchMergedPRsWithPagination(
     totalCount: number,
     initialPRs?: PullRequest[],
     initialPageInfo?: { hasNextPage: boolean; endCursor: string | null },
+    callbacks?: LoadingCallbacks,
 ): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null }> {
     const baseQuery = `repo:${owner}/${repo} is:pr is:merged created:${fromDate}..${toDate}`;
     let rateLimitInfo: RateLimitInfo | null = null;
@@ -199,6 +205,11 @@ async function fetchMergedPRsWithPagination(
                 );
                 prs.push(...convertGraphQLPRs(result.data.search.nodes));
                 rateLimitInfo = convertGraphQLRateLimit(result.data.rateLimit);
+
+                if (callbacks) {
+                    callbacks.updateProgress(prs.length, totalCount, `Fetched ${prs.length} of ${totalCount} merged PRs`);
+                }
+
                 if (!result.data.search.pageInfo.hasNextPage) break;
                 after = result.data.search.pageInfo.endCursor;
             }
@@ -223,6 +234,11 @@ async function fetchMergedPRsWithPagination(
             );
             allPRs.push(...convertGraphQLPRs(result.data.search.nodes));
             rateLimitInfo = convertGraphQLRateLimit(result.data.rateLimit);
+
+            if (callbacks) {
+                callbacks.updateProgress(allPRs.length, totalCount, `Fetched ${allPRs.length} of ${totalCount} merged PRs`);
+            }
+
             if (!result.data.search.pageInfo.hasNextPage) break;
             after = result.data.search.pageInfo.endCursor;
         }
@@ -262,7 +278,8 @@ async function fetchWithGraphQL(
     const mergedQuery = mergedAllQuery;
     const openQuery = `${baseQuery} is:open`;
 
-    callbacks.updatePhase('Fetching via GraphQL API...', 'Combined query for Copilot PRs, repository statistics, and merged PRs');
+    callbacks.updatePhase('Fetching via GraphQL API...', 'Executing combined query...');
+    callbacks.showIndeterminate('Querying Copilot PRs, repository statistics, and merged PRs...');
 
     const allPRs: PullRequest[] = [];
     let rateLimitInfo: RateLimitInfo | null = null;
@@ -292,19 +309,28 @@ async function fetchWithGraphQL(
                 closed: Math.max(0, data.totalCount.issueCount - data.mergedCount.issueCount - data.openCount.issueCount),
             };
 
+            // Fetch all merged PRs with progress reporting
+            const mergedTotalCount = data.allMergedPRs.issueCount;
+            const initialMergedPRs = convertGraphQLPRs(data.allMergedPRs.nodes);
+            if (mergedTotalCount > initialMergedPRs.length) {
+                callbacks.updatePhase('Fetching merged PRs...', `Loading merged PRs for comparison (${initialMergedPRs.length} / ${mergedTotalCount})`);
+                callbacks.updateProgress(initialMergedPRs.length, mergedTotalCount, `Fetched ${initialMergedPRs.length} of ${mergedTotalCount} merged PRs`);
+            }
+
             try {
                 const mergedFetchResult = await fetchMergedPRsWithPagination(
                     owner, repo, fromDate, toDate, token, signal,
-                    data.allMergedPRs.issueCount,
-                    convertGraphQLPRs(data.allMergedPRs.nodes),
+                    mergedTotalCount,
+                    initialMergedPRs,
                     data.allMergedPRs.pageInfo,
+                    callbacks,
                 );
                 allMergedPRs = mergedFetchResult.prs;
                 if (mergedFetchResult.rateLimitInfo) rateLimitInfo = mergedFetchResult.rateLimitInfo;
             } catch (error) {
                 if (error instanceof DOMException && error.name === 'AbortError') throw error;
                 console.warn('Error fetching merged PRs (partial data preserved):', error);
-                allMergedPRs = convertGraphQLPRs(data.allMergedPRs.nodes);
+                allMergedPRs = initialMergedPRs;
             }
 
             rateLimitInfo = convertGraphQLRateLimit(data.rateLimit);
@@ -312,6 +338,9 @@ async function fetchWithGraphQL(
 
             if (!data.copilotPRs.pageInfo.hasNextPage) break;
             after = data.copilotPRs.pageInfo.endCursor;
+
+            // Update phase for subsequent Copilot PR pages
+            callbacks.updatePhase('Fetching Copilot PRs...', `Loading additional Copilot PRs...`);
         } else {
             // Subsequent pages: simple search query
             const result: { data: SingleSearchQueryData } = await executeGraphQL<SingleSearchQueryData>(
@@ -368,6 +397,7 @@ async function fetchCopilotPRsWithSearchAPI(
     let incompleteResults = false;
 
     callbacks.updatePhase('Fetching Copilot PRs...', 'Searching for PRs created by Copilot Coding Agent');
+    callbacks.showIndeterminate('Searching for PRs created by Copilot Coding Agent...');
 
     while (true) {
         const url = buildSearchUrl(query, perPage, page);
@@ -588,12 +618,16 @@ async function fetchAllMergedPRsData(
     toDate: string,
     headers: HeadersInit,
     signal: AbortSignal,
+    callbacks?: LoadingCallbacks,
 ): Promise<{ prs: PullRequest[]; rateLimitInfo: RateLimitInfo | null }> {
     const query = `repo:${owner}/${repo} is:pr is:merged created:${fromDate}..${toDate}`;
     const perPage = 100;
     const allPRs: PullRequest[] = [];
     let rateLimitInfo: RateLimitInfo | null = null;
     let page = 1;
+    let totalCount = 0;
+
+    callbacks?.showIndeterminate('Searching for merged PRs...');
 
     try {
         while (true) {
@@ -607,8 +641,15 @@ async function fetchAllMergedPRsData(
             }
 
             const searchResponse: SearchResponse = await response.json();
+            if (page === 1) {
+                totalCount = searchResponse.total_count;
+            }
             const prs = convertSearchItemsToPRs(searchResponse.items);
             allPRs.push(...prs);
+
+            if (callbacks && totalCount > 0) {
+                callbacks.updateProgress(allPRs.length, totalCount, `Fetched ${allPRs.length} of ${totalCount} merged PRs`);
+            }
 
             if (prs.length < perPage || allPRs.length >= searchResponse.total_count) break;
             if (page >= 10) break; // GitHub Search API limit: 1000 results
