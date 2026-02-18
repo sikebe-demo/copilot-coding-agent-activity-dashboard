@@ -33,7 +33,14 @@ test.describe('API Errors', () => {
   });
 
   test('should show authentication error for 401', async ({ page }) => {
-    await mockSearchAPI(page, { status: 401, body: { message: 'Bad credentials' } });
+    // Token triggers GraphQL path — mock GraphQL endpoint to return 401
+    await page.route('https://api.github.com/graphql', async route => {
+      await route.fulfill({
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'Bad credentials' }),
+      });
+    });
     await submitSearch(page, { token: 'invalid-token' });
     await waitForError(page);
 
@@ -113,9 +120,10 @@ test.describe('Rate Limiting', () => {
   });
 
   test('should display rate limit information after successful search', async ({ page }) => {
+    // Use realistic REST Search API limits (30 req/min for authenticated)
     await mockSearchAPI(page, {
       prs: [createPR()],
-      headers: createRateLimitHeaders(4990, 5000, 10)
+      headers: createRateLimitHeaders(20, 30, 10)
     });
 
     await submitSearch(page);

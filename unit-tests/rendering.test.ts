@@ -420,6 +420,24 @@ describe('generateRateLimitHtml', () => {
         const html = generateRateLimitHtml({ info, fromCache: false, resetCountdown: '1:00' });
         expect(html).toContain('href="https://docs.github.com/en/rest/search/search#rate-limit"');
     });
+
+    it('should show "GitHub GraphQL API" and "points this hour" for GraphQL rate limit', () => {
+        const info: RateLimitInfo = { limit: 5000, remaining: 4995, reset: Math.floor(Date.now() / 1000) + 3600, used: 5 };
+        const html = generateRateLimitHtml({ info, fromCache: false, resetCountdown: '59:00' });
+        expect(html).toContain('GitHub GraphQL API');
+        expect(html).not.toContain('GitHub Search API');
+        expect(html).toContain('points this hour');
+        expect(html).not.toContain('requests this minute');
+    });
+
+    it('should show "GitHub Search API" and "requests this minute" for REST authenticated rate limit', () => {
+        const info: RateLimitInfo = { limit: 30, remaining: 25, reset: Math.floor(Date.now() / 1000) + 60, used: 5 };
+        const html = generateRateLimitHtml({ info, fromCache: false, resetCountdown: '1:00' });
+        expect(html).toContain('GitHub Search API');
+        expect(html).not.toContain('GitHub GraphQL API');
+        expect(html).toContain('requests this minute');
+        expect(html).not.toContain('points this hour');
+    });
 });
 
 // ============================================================================

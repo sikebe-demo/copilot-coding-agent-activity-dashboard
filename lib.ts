@@ -84,14 +84,152 @@ export interface SearchIssueItem {
 }
 
 // ============================================================================
+// GraphQL Types
+// ============================================================================
+
+export interface GraphQLResponse<T> {
+    data?: T;
+    errors?: Array<{ message: string; type?: string; path?: string[] }>;
+}
+
+export interface GraphQLRateLimit {
+    limit: number;
+    remaining: number;
+    resetAt: string;
+    cost: number;
+    used: number;
+}
+
+export interface GraphQLSearchResult {
+    issueCount: number;
+    pageInfo: {
+        hasNextPage: boolean;
+        endCursor: string | null;
+    };
+    nodes: GraphQLPullRequest[];
+}
+
+export interface GraphQLPullRequest {
+    databaseId: number;
+    number: number;
+    title: string | null;
+    state: 'OPEN' | 'CLOSED' | 'MERGED';
+    createdAt: string;
+    mergedAt: string | null;
+    url: string;
+    author: { login: string } | null;
+}
+
+export interface CombinedQueryData {
+    copilotPRs: GraphQLSearchResult;
+    allMergedPRs: GraphQLSearchResult;
+    totalCount: { issueCount: number };
+    mergedCount: { issueCount: number };
+    openCount: { issueCount: number };
+    rateLimit: GraphQLRateLimit;
+}
+
+export interface SingleSearchQueryData {
+    search: GraphQLSearchResult;
+    rateLimit: GraphQLRateLimit;
+}
+
+// ============================================================================
 // Constants
 // ============================================================================
 
 export const ITEMS_PER_PAGE = 10;
 export const CACHE_KEY_PREFIX = 'copilot_pr_cache_';
-export const CACHE_VERSION = 'v4';
+export const CACHE_VERSION = 'v6';
 export const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 export const CACHE_CLEANUP_INTERVAL_MS = 60 * 1000; // 1 minute
+
+// ============================================================================
+// GraphQL Utilities
+// ============================================================================
+
+/**
+ * Converts GraphQL PullRequest nodes to internal PullRequest format.
+ * GraphQL state MERGED/CLOSED both map to state:'closed'; merged_at distinguishes them.
+ */
+export function convertGraphQLPRs(nodes: GraphQLPullRequest[]): PullRequest[] {
+    return nodes.map(pr => ({
+        id: pr.databaseId,
+        number: pr.number,
+        title: pr.title,
+        state: pr.state === 'OPEN' ? 'open' as const : 'closed' as const,
+        merged_at: pr.mergedAt,
+        created_at: pr.createdAt,
+        user: pr.author ? { login: pr.author.login } : null,
+        html_url: pr.url,
+    }));
+}
+
+/**
+ * Converts a GraphQL rate limit object to our internal RateLimitInfo format.
+ */
+export function convertGraphQLRateLimit(rl: GraphQLRateLimit): RateLimitInfo {
+    return {
+        limit: rl.limit,
+        remaining: rl.remaining,
+        reset: Math.floor(new Date(rl.resetAt).getTime() / 1000),
+        used: rl.used,
+    };
+}
+
+// ============================================================================
+// GraphQL Query Constants
+// ============================================================================
+
+const GRAPHQL_PR_FRAGMENT = `
+    ... on PullRequest {
+        databaseId
+        number
+        title
+        state
+        createdAt
+        mergedAt
+        url
+        author { login }
+    }
+`;
+
+/**
+ * Combined query: fetches Copilot PRs + all PR counts in a single request.
+ * Uses aliases to run multiple search queries simultaneously.
+ */
+export const GRAPHQL_COMBINED_QUERY = `
+query CopilotDashboard($copilotQuery: String!, $mergedAllQuery: String!, $totalQuery: String!, $mergedQuery: String!, $openQuery: String!, $first: Int!, $after: String) {
+    copilotPRs: search(query: $copilotQuery, type: ISSUE, first: $first, after: $after) {
+        issueCount
+        pageInfo { hasNextPage endCursor }
+        nodes { ${GRAPHQL_PR_FRAGMENT} }
+    }
+    allMergedPRs: search(query: $mergedAllQuery, type: ISSUE, first: 100) {
+        issueCount
+        pageInfo { hasNextPage endCursor }
+        nodes { ${GRAPHQL_PR_FRAGMENT} }
+    }
+    totalCount: search(query: $totalQuery, type: ISSUE, first: 1) { issueCount }
+    mergedCount: search(query: $mergedQuery, type: ISSUE, first: 1) { issueCount }
+    openCount: search(query: $openQuery, type: ISSUE, first: 1) { issueCount }
+    rateLimit { limit remaining resetAt cost used }
+}
+`;
+
+/**
+ * Simple search query for pagination and single-purpose fetches.
+ */
+export const GRAPHQL_SEARCH_QUERY = `
+query SearchQuery($query: String!, $first: Int!, $after: String) {
+    search(query: $query, type: ISSUE, first: $first, after: $after) {
+        issueCount
+        pageInfo { hasNextPage endCursor }
+        nodes { ${GRAPHQL_PR_FRAGMENT} }
+    }
+    rateLimit { limit remaining resetAt cost used }
+}
+`;
 
 // ============================================================================
 // HTML Escaping & Sanitization
@@ -1092,20 +1230,26 @@ export function generateRateLimitHtml(params: RateLimitDisplayParams): string {
         ? 'text-red-600 dark:text-red-400'
         : '';
 
+    const isGraphQL = info.limit >= 100;
+
     const infoText = fromCache
         ? '<p>📦 Data loaded from cache (5 min TTL). No API call made.</p>'
-        : `<p>🔄 Used ${info.used} requests this minute</p>`;
+        : isGraphQL
+            ? `<p>🔄 Used ${info.used} points this hour</p>`
+            : `<p>🔄 Used ${info.used} requests this minute</p>`;
 
-    const authTip = isAuthenticated
-        ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
-        : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">PAT</a> to increase to 30 requests/min.';
+    const authTip = isGraphQL
+        ? 'Authenticated via GraphQL API. Rate limit: 5,000 points/hour — dramatically more generous than REST Search API.'
+        : isAuthenticated
+            ? 'Authenticated with Personal Access Token. Search API allows up to 30 requests/min.'
+            : 'Limited to 10 requests/min without authentication. Set up a <a href="https://docs.github.com/en/rest/search/search#rate-limit" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">PAT</a> to increase to 30 requests/min.';
 
     return `
         <div class="space-y-3">
             <!-- Header -->
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200">GitHub Search API</span>
+                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200">${isGraphQL ? 'GitHub GraphQL API' : 'GitHub Search API'}</span>
                     ${authStatusBadge}
                     ${cacheIndicator}
                 </div>

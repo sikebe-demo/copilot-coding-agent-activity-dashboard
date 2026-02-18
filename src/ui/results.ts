@@ -49,12 +49,25 @@ export async function displayResults(prs: PullRequest[], fromDate: string, toDat
 
     // Show/hide comparison banner
     if (dom.comparisonBanner) {
-        if (hasComparison) {
+        const hasMergedData = allMergedPRs !== undefined;
+        if (hasComparison && hasMergedData) {
             dom.comparisonBanner.classList.add('hidden');
             state.comparisonLoaded = true;
         } else {
             dom.comparisonBanner.classList.remove('hidden');
             state.comparisonLoaded = false;
+            // Adapt banner text: if counts already loaded (GraphQL), only response time is needed
+            const bannerTitle = document.getElementById('comparisonBannerTitle');
+            const bannerSubtitle = document.getElementById('comparisonBannerSubtitle');
+            if (bannerTitle && bannerSubtitle) {
+                if (hasComparison) {
+                    bannerTitle.textContent = 'Response time comparison data is not loaded yet';
+                    bannerSubtitle.textContent = 'Load to compare Copilot response times with other PRs (~1 API call)';
+                } else {
+                    bannerTitle.textContent = 'Repository-wide comparison data is not loaded yet';
+                    bannerSubtitle.textContent = 'Load to see PR ratios (Copilot / Total) and response time comparison (~4 API calls)';
+                }
+            }
         }
     }
 

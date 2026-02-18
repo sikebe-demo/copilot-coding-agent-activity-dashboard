@@ -299,3 +299,165 @@ export async function waitForRateLimitInfo(page) {
 export async function waitForChart(page) {
   await page.waitForSelector('#prChart canvas', { state: 'visible', timeout: DEFAULT_TIMEOUT });
 }
+
+// ============================================================================
+// GraphQL API Response Helpers
+// ============================================================================
+
+/**
+ * Converts a PR object to GraphQL node format
+ * @param {object} pr - PR object from createPR()
+ * @returns {object} GraphQL node
+ */
+export function createGraphQLPRNode(pr) {
+  return {
+    databaseId: pr.id,
+    number: pr.number,
+    title: pr.title,
+    state: pr.merged_at ? 'MERGED' : pr.state === 'open' ? 'OPEN' : 'CLOSED',
+    createdAt: pr.created_at,
+    mergedAt: pr.merged_at || null,
+    url: pr.html_url,
+    author: pr.user ? { login: pr.user.login || 'copilot' } : null,
+  };
+}
+
+/**
+ * Creates a default GraphQL rate limit object
+ */
+export function createGraphQLRateLimit(remaining = 4995, limit = 5000, used = 5) {
+  return {
+    limit,
+    remaining,
+    resetAt: new Date(Date.now() + 3600000).toISOString(),
+    cost: 1,
+    used,
+  };
+}
+
+/**
+ * Creates a combined GraphQL response (Copilot PRs + all PR counts + all merged PRs)
+ */
+export function createGraphQLCombinedResponse(prs, allPRCounts = null, allMergedPRs = null) {
+  const nodes = prs.map(createGraphQLPRNode);
+  const counts = allPRCounts || {
+    total: prs.length,
+    merged: prs.filter(p => p.merged_at).length,
+    open: prs.filter(p => p.state === 'open' && !p.merged_at).length,
+  };
+  const closed = Math.max(0, counts.total - counts.merged - counts.open);
+
+  // allMergedPRs defaults to merged PRs from the provided prs list
+  const mergedPRsList = allMergedPRs || prs.filter(p => p.merged_at);
+  const mergedNodes = mergedPRsList.map(createGraphQLPRNode);
+
+  return {
+    data: {
+      copilotPRs: {
+        issueCount: prs.length,
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes,
+      },
+      allMergedPRs: {
+        issueCount: mergedPRsList.length,
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes: mergedNodes,
+      },
+      totalCount: { issueCount: counts.total },
+      mergedCount: { issueCount: counts.merged },
+      openCount: { issueCount: counts.open },
+      rateLimit: createGraphQLRateLimit(),
+    }
+  };
+}
+
+/**
+ * Creates a simple GraphQL search response
+ */
+export function createGraphQLSearchResponse(prs) {
+  const nodes = prs.map(createGraphQLPRNode);
+  return {
+    data: {
+      search: {
+        issueCount: prs.length,
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes,
+      },
+      rateLimit: createGraphQLRateLimit(),
+    }
+  };
+}
+
+/**
+ * Sets up a mock for the GitHub GraphQL API
+ * @param {Page} page - Playwright page object
+ * @param {object} options - Mock configuration
+ */
+export async function mockGraphQLAPI(page, options = {}) {
+  const {
+    prs = [],
+    allMergedPRs = null,
+    allPRCounts = null,
+    status = 200,
+    body = null,
+    delay = 0,
+    onRequest = null,
+  } = options;
+
+  await page.route('https://api.github.com/graphql', async route => {
+    if (onRequest) onRequest(route.request());
+    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+
+    if (status !== 200) {
+      await route.fulfill({
+        status,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body ?? { message: 'Error' }),
+      });
+      return;
+    }
+
+    // Parse the request to determine query type
+    const reqBody = JSON.parse(route.request().postData() || '{}');
+    const query = reqBody.query || '';
+    const isCombined = query.includes('copilotPRs:');
+
+    if (isCombined) {
+      // Check if this is a comparison data fetch (copilotQuery contains "is:merged" without "author:")
+      const copilotQueryVar = reqBody.variables?.copilotQuery || '';
+      const isComparisonFetch = copilotQueryVar.includes('is:merged') && !copilotQueryVar.includes('author:');
+
+      if (isComparisonFetch && allMergedPRs !== null) {
+        await route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(createGraphQLCombinedResponse(allMergedPRs, allPRCounts)),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body ?? createGraphQLCombinedResponse(prs, allPRCounts)),
+        });
+      }
+    } else {
+      // Simple search query — used for pagination or comparison merged PRs
+      const queryVar = reqBody.variables?.query || '';
+      const isComparisonMergedFetch = queryVar.includes('is:merged') && !queryVar.includes('author:');
+
+      if (isComparisonMergedFetch && allMergedPRs !== null) {
+        await route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body ?? createGraphQLSearchResponse(allMergedPRs)),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body ?? createGraphQLSearchResponse(prs)),
+        });
+      }
+    }
+  });
+}

@@ -193,15 +193,8 @@ test.describe('Response Time Analysis', () => {
     await submitSearch(page);
     await waitForResults(page);
 
-    // Initially shows copilot-only data
+    // Comparison data is loaded inline — comparison shown immediately
     await expect(page.locator('#responseTimeSubtitle')).toContainText('2 Copilot');
-    await expect(page.locator('#comparisonBanner')).toBeVisible();
-
-    // Click the "Load Repository Comparison" button
-    await page.click('#comparisonButton');
-
-    // Wait for comparison data to load
-    await expect(page.locator('#comparisonBanner')).toBeHidden();
 
     const stats = page.locator('#responseTimeStats');
     await expect(stats).toBeVisible();

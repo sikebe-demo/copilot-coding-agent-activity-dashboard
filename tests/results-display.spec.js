@@ -90,14 +90,7 @@ test.describe('Results Display', () => {
     await submitSearch(page);
     await waitForResults(page);
 
-    // Initially shows copilot-only counts (no ratio)
-    await expect(page.locator('#totalPRs')).toContainText('3');
-    await expect(page.locator('#comparisonBanner')).toBeVisible();
-
-    // Click the "Load Repository Comparison" button to load ratios
-    await page.click('#comparisonButton');
-    await expect(page.locator('#comparisonBanner')).toBeHidden();
-
+    // Comparison data is loaded inline — ratios shown immediately
     await expect(page.locator('#totalPRs')).toContainText('3');
     await expect(page.locator('#totalPRs')).toContainText('/ 10');
     await expect(page.locator('#mergedPRs')).toContainText('2');
